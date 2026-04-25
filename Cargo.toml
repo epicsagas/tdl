@@ -1,0 +1,29 @@
+[package]
+name = "tidal-dl-ng"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+anyhow = "1"
+thiserror = "2"
+base64 = "0.22"
+aes = "0.8"
+cbc = "0.1"
+ctr = "0.9"
+sha2 = "0.10"
+lofty = "0.22"
+m3u8-rs = "6"
+quick-xml = "0.37"
+dirs = "6"
+url = "2"
+regex = "1"
+rand = "0.9"
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
+hex = "0.4"
