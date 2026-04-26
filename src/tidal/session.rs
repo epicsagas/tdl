@@ -166,11 +166,17 @@ impl TidalSession {
             .ok_or_else(|| anyhow!("No refresh token available"))?
             .clone();
 
+        let (client_id, client_secret) = if self.token.is_pkce {
+            (self.pkce_client_id.clone(), self.pkce_client_secret.clone())
+        } else {
+            (self.client_id.clone(), self.client_secret.clone())
+        };
+
         let mut form = HashMap::new();
         form.insert("grant_type".to_string(), "refresh_token".to_string());
         form.insert("refresh_token".to_string(), refresh_token);
-        form.insert("client_id".to_string(), self.client_id.clone());
-        form.insert("client_secret".to_string(), self.client_secret.clone());
+        form.insert("client_id".to_string(), client_id);
+        form.insert("client_secret".to_string(), client_secret);
 
         let resp = self.request.post_auth("token", form).await?;
         let token_resp: TokenResponse = resp.json().await?;
@@ -346,6 +352,7 @@ impl TidalSession {
         }
 
         // Step 8: Save and validate.
+        self.token.is_pkce = true;
         self.apply_token_response(&token_resp);
         let session = self.validate_session().await?;
         self.set_session_info(&session);

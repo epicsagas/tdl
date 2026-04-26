@@ -4,6 +4,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 
 use crate::config::settings::Quality;
+use crate::config::settings::QualityVideo;
 use crate::tidal::media::{PlaybackInfoResponse, VideoUrlResponse};
 use crate::tidal::request::TidalRequest;
 
@@ -71,6 +72,17 @@ fn quality_to_api_string(quality: &Quality) -> &'static str {
     }
 }
 
+/// Map the application-level `QualityVideo` enum to the string the Tidal API
+/// expects in the `videoquality` query parameter.
+fn video_quality_to_api_string(quality: &QualityVideo) -> &'static str {
+    match quality {
+        QualityVideo::P360 => "LOW",
+        QualityVideo::P480 => "MEDIUM",
+        QualityVideo::P720 => "HIGH",
+        QualityVideo::P1080 => "HIGH",
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -124,18 +136,22 @@ pub async fn fetch_track_stream(
 pub async fn fetch_video_url(
     request: &TidalRequest,
     video_id: u64,
-    quality: &str,
+    quality: &QualityVideo,
 ) -> Result<String> {
     let path = format!("videos/{video_id}/urlpostpaywall");
 
     let mut params = HashMap::new();
     params.insert("urlusagemode".to_string(), "STREAM".to_string());
-    params.insert("videoquality".to_string(), quality.to_string());
+    params.insert(
+        "videoquality".to_string(),
+        video_quality_to_api_string(quality).to_string(),
+    );
     params.insert("assetpresentation".to_string(), "FULL".to_string());
 
     let resp: VideoUrlResponse = request.get(&path, Some(params)).await?;
 
-    resp.url
+    resp.urls
+        .and_then(|urls| urls.into_iter().next())
         .ok_or_else(|| anyhow!("No URL returned for video {video_id}"))
 }
 
@@ -429,12 +445,13 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                 }
             }
         } else {
-            // SegmentTemplate without timeline: generate sequential segments.
+            // SegmentTemplate without timeline: try to generate a reasonable
+            // number of segments.  A typical track is ~5 min with ~6 sec
+            // segments ≈ 50.  Use 200 as a generous upper bound.
             if let Some(ref init) = init_url {
                 urls.push(init.clone());
             }
-            // Without a timeline we don't know the count; generate up to 1000.
-            for i in start_number..(start_number + 1000) {
+            for i in start_number..(start_number + 200) {
                 urls.push(tmpl.replace("$Number$", &i.to_string()));
             }
         }

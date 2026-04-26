@@ -442,7 +442,7 @@ pub struct PlaybackInfoResponse {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct VideoUrlResponse {
     #[serde(default)]
-    pub url: Option<String>,
+    pub urls: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

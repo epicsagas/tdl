@@ -169,6 +169,10 @@ impl Downloader {
         let final_path = file_unique_suffix(&dest_path);
 
         // --- 4. Fetch stream / download URL --------------------------------
+        if is_video {
+            return self.download_video(numeric_id, &track, &final_path).await;
+        }
+
         let (manifest, _playback_info) = {
             let sess = self.session.lock().await;
             stream::fetch_track_stream(&sess.request, track.id, &self.settings.quality_audio)
@@ -326,6 +330,91 @@ impl Downloader {
         // --- 12. Apply download delay --------------------------------------
         self.apply_download_delay().await;
 
+        Ok(())
+    }
+
+    // -----------------------------------------------------------------------
+    // Video download
+    // -----------------------------------------------------------------------
+
+    /// Download a video by fetching its m3u8 URL and downloading segments.
+    async fn download_video(
+        &self,
+        video_id: u64,
+        track: &Track,
+        final_path: &Path,
+    ) -> Result<()> {
+        // Fetch the m3u8 master URL from the video endpoint.
+        let m3u8_url = {
+            let sess = self.session.lock().await;
+            stream::fetch_video_url(&sess.request, video_id, &self.settings.quality_video).await?
+        };
+
+        // Fetch and parse the master playlist to get the media playlist URL.
+        let master_body = self.http_client.get(&m3u8_url).send().await?.text().await?;
+        let variant_urls = video::parse_m3u8(&master_body)?;
+
+        // If we got a media playlist URL, fetch and parse it for segment URLs.
+        let segments = if variant_urls.len() == 1 && !master_body.contains("#EXTINF") {
+            // Resolve relative URI against the master playlist URL.
+            let media_url = url::Url::parse(&m3u8_url)
+                .and_then(|base| base.join(&variant_urls[0]))
+                .map(|u| u.to_string())
+                .unwrap_or_else(|_| variant_urls[0].clone());
+
+            let media_body = self.http_client.get(&media_url).send().await?.text().await?;
+            video::parse_m3u8(&media_body)?
+        } else {
+            variant_urls
+        };
+
+        // Download segments into a temp file.
+        let temp_dir = final_path
+            .parent()
+            .ok_or_else(|| anyhow!("Destination path has no parent"))?;
+        let temp_file_name = format!(
+            ".~{}.part",
+            final_path.file_name().unwrap_or_default().to_string_lossy()
+        );
+        let temp_path = temp_dir.join(&temp_file_name);
+
+        let pb = self.create_progress_bar(segments.len() as u64, &track.title_display());
+
+        segment::download_and_merge(
+            &segments,
+            &temp_path,
+            &self.http_client,
+            self.settings.downloads_simultaneous_per_track_max,
+            Some(&pb),
+        )
+        .await?;
+
+        pb.finish_and_clear();
+
+        let mut working_path = temp_path;
+
+        // Convert TS -> MP4 if ffmpeg is available.
+        if self.settings.video_convert_mp4
+            && video::ffmpeg_available(&self.settings.path_binary_ffmpeg)
+        {
+            let mp4_path = working_path.with_extension("mp4");
+            video::convert_ts_to_mp4(&working_path, &mp4_path, &self.settings.path_binary_ffmpeg)?;
+            let _ = tokio::fs::remove_file(&working_path).await;
+            working_path = mp4_path;
+        }
+
+        // Move to final destination.
+        if working_path != final_path {
+            tokio::fs::rename(&working_path, final_path)
+                .await
+                .map_err(|e| anyhow!("Failed to move file to {}: {e}", final_path.display()))?;
+        } else if working_path.extension().is_some_and(|e| e == "part") {
+            let renamed = working_path.with_extension("");
+            tokio::fs::rename(&working_path, &renamed).await?;
+        }
+
+        println!("Saved: {}", final_path.display());
+        self.apply_download_delay().await;
         Ok(())
     }
 

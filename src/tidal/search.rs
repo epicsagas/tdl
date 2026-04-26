@@ -32,7 +32,7 @@ impl<'a> TidalSearch<'a> {
     ) -> Result<SearchResponse> {
         let mut params = HashMap::new();
         params.insert("query".to_string(), query.to_string());
-        params.insert("type".to_string(), types.join(","));
+        params.insert("type".to_string(), types.iter().map(|t| t.to_uppercase()).collect::<Vec<_>>().join(","));
         if let Some(limit) = limit {
             params.insert("limit".to_string(), limit.to_string());
         }
@@ -121,7 +121,7 @@ pub async fn get_favorite_tracks(
     user_id: u64,
 ) -> Result<Vec<Track>> {
     let path = format!("users/{user_id}/favorites/tracks");
-    paginate_favorites::<Track>(request, &path).await
+    paginate_wrapped_items::<Track>(request, &path).await
 }
 
 /// Fetch the user's favourite albums, automatically paginating.
@@ -130,7 +130,7 @@ pub async fn get_favorite_albums(
     user_id: u64,
 ) -> Result<Vec<Album>> {
     let path = format!("users/{user_id}/favorites/albums");
-    paginate_favorites::<Album>(request, &path).await
+    paginate_wrapped_items::<Album>(request, &path).await
 }
 
 /// Fetch the user's favourite artists, automatically paginating.
@@ -139,7 +139,7 @@ pub async fn get_favorite_artists(
     user_id: u64,
 ) -> Result<Vec<Artist>> {
     let path = format!("users/{user_id}/favorites/artists");
-    paginate_favorites::<Artist>(request, &path).await
+    paginate_wrapped_items::<Artist>(request, &path).await
 }
 
 /// Fetch the user's favourite videos, automatically paginating.
@@ -148,7 +148,7 @@ pub async fn get_favorite_videos(
     user_id: u64,
 ) -> Result<Vec<Video>> {
     let path = format!("users/{user_id}/favorites/videos");
-    paginate_favorites::<Video>(request, &path).await
+    paginate_wrapped_items::<Video>(request, &path).await
 }
 
 /// Fetch timed lyrics for a track.
@@ -323,16 +323,6 @@ async fn paginate_wrapped_items<T: serde::de::DeserializeOwned>(
     }
 
     Ok(all_items)
-}
-
-/// Paginate favourites endpoints.
-///
-/// These use the same `PaginatedResponse` envelope shape.
-async fn paginate_favorites<T: serde::de::DeserializeOwned>(
-    request: &TidalRequest,
-    base_path: &str,
-) -> Result<Vec<T>> {
-    paginate_items::<T>(request, base_path).await
 }
 
 #[cfg(test)]

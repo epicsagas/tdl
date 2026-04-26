@@ -13,6 +13,8 @@ pub struct Token {
     pub session_id: Option<String>,
     pub country_code: Option<String>,
     pub user_id: Option<u64>,
+    #[serde(default)]
+    pub is_pkce: bool,
 }
 
 impl Token {
@@ -159,6 +161,7 @@ mod tests {
             session_id: Some("sess_001".to_string()),
             country_code: Some("US".to_string()),
             user_id: Some(12345),
+            is_pkce: false,
         };
 
         let json = serde_json::to_string_pretty(&token).unwrap();
