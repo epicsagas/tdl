@@ -90,7 +90,7 @@ fn populate_tag(tag: &mut Tag, meta: &AudioMetadata, _tag_type: TagType) {
             tag.insert_text(ItemKey::TrackArtist, first.clone());
         }
         // Remove any existing TrackArtists entries before pushing new ones.
-        tag.retain(|item| item.key() != &ItemKey::TrackArtists);
+        tag.retain(|item| item.key() != ItemKey::TrackArtists);
         for artist in artists {
             tag.push_unchecked(TagItem::new(
                 ItemKey::TrackArtists,
@@ -140,13 +140,8 @@ fn populate_tag(tag: &mut Tag, meta: &AudioMetadata, _tag_type: TagType) {
         // Remove existing front cover pictures to avoid duplicates.
         tag.remove_picture_type(PictureType::CoverFront);
 
-        let mime = cover_mime(cover_data);
-        let pic = Picture::new_unchecked(
-            PictureType::CoverFront,
-            mime,
-            None,
-            cover_data.clone(),
-        );
+        let _mime = cover_mime(cover_data);
+        let pic = Picture::unchecked(cover_data.clone()).build();
         tag.push_picture(pic);
     }
 

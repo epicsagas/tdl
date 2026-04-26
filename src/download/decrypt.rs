@@ -1,4 +1,4 @@
-use aes::cipher::{BlockDecryptMut, KeyIvInit, StreamCipher};
+use aes::cipher::{block_padding::NoPadding, BlockModeDecrypt, KeyIvInit, StreamCipher};
 use anyhow::{anyhow, Result};
 use base64::Engine;
 
@@ -33,7 +33,7 @@ pub fn decrypt_security_token(security_token: &str) -> Result<([u8; 16], [u8; 8]
         .map_err(|e| anyhow!("AES init failed: {}", e))?;
 
     let decrypted = decryptor
-        .decrypt_padded_mut::<cbc::cipher::block_padding::NoPadding>(&mut buf)
+        .decrypt_padded::<NoPadding>(&mut buf)
         .map_err(|e| anyhow!("AES-CBC decryption failed: {:?}", e))?;
 
     if decrypted.len() < 24 {

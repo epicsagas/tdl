@@ -1,4 +1,4 @@
-use tidal_dl_ng::cli::app;
+use tdl::cli::app;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

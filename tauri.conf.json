@@ -1,0 +1,29 @@
+{
+  "$schema": "https://github.com/tauri-apps/tauri/blob/dev/crates/tauri-schema-generator/schemas/config.schema.json",
+  "productName": "tdl",
+  "version": "0.1.0",
+  "identifier": "com.tdl",
+  "build": {
+    "frontendDist": "./frontend"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "title": "tdl - Tidal Downloader",
+        "width": 1100,
+        "height": 700,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}

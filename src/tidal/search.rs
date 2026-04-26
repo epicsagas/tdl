@@ -166,9 +166,41 @@ pub async fn get_user_playlists(
 }
 
 /// Fetch the tracks in a mix.
+///
+/// Uses the `pages/mix` endpoint which returns a page structure where
+/// `categories[1].pagedList.items` contains the track list.
 pub async fn get_mix_items(request: &TidalRequest, mix_id: &str) -> Result<Vec<Track>> {
-    let path = format!("mixes/{mix_id}/items");
-    paginate_items::<Track>(request, &path).await
+    let path = "pages/mix";
+    let mut params = HashMap::new();
+    params.insert("mixId".to_string(), mix_id.to_string());
+    params.insert("deviceType".to_string(), "BROWSER".to_string());
+
+    let page: crate::tidal::media::MixPageResponse = request.get(path, Some(params)).await?;
+
+    // The first category is the mix header, the second contains the tracks.
+    let tracks_category = page
+        .categories
+        .into_iter()
+        .nth(1)
+        .ok_or_else(|| anyhow::anyhow!("Mix page has no track category"))?;
+
+    let paged = tracks_category
+        .paged_list
+        .ok_or_else(|| anyhow::anyhow!("Mix track category has no pagedList"))?;
+
+    let mut tracks = Vec::new();
+    for item in paged.items {
+        if let Some(value) = item.item
+            && let Ok(track) = serde_json::from_value::<Track>(value) {
+                tracks.push(track);
+            }
+    }
+
+    if tracks.is_empty() {
+        anyhow::bail!("Mix contains no downloadable tracks");
+    }
+
+    Ok(tracks)
 }
 
 // ---------------------------------------------------------------------------

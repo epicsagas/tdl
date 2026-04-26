@@ -1,29 +1,44 @@
 [package]
-name = "tidal-dl-ng"
+name = "tdl"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.13", features = ["json", "stream", "form", "query", "gzip", "deflate", "brotli"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 clap = { version = "4", features = ["derive"] }
-indicatif = "0.17"
+indicatif = "0.18"
 anyhow = "1"
 thiserror = "2"
 base64 = "0.22"
-aes = "0.8"
-cbc = "0.1"
-ctr = "0.9"
-sha2 = "0.10"
-lofty = "0.22"
+aes = "0.9"
+cbc = "0.2"
+ctr = "0.10"
+sha2 = "0.11"
+lofty = "0.24"
 m3u8-rs = "6"
-quick-xml = "0.37"
+quick-xml = "0.39"
 dirs = "6"
 url = "2"
 regex = "1"
-rand = "0.9"
+rand = "0.10"
 tokio-util = { version = "0.7", features = ["io"] }
 futures = "0.3"
 hex = "0.4"
+inquire = "0.9"
+ratatui = "0.30"
+crossterm = "0.29"
+
+[build-dependencies]
+tauri-build = { version = "2", optional = true }
+
+[dependencies.tauri]
+version = "2"
+features = ["native-tls"]
+optional = true
+
+[features]
+default = ["gui"]
+gui = ["tauri", "tauri-build"]

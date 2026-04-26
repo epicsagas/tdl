@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
-use rand::Rng;
+use rand::RngExt;
 use tokio::sync::Mutex;
 
 use crate::config::settings::{CoverDimensions, Settings};
@@ -32,20 +32,13 @@ pub struct Downloader {
 
 impl Downloader {
     /// Create a new downloader backed by the given shared session.
-    ///
-    /// The settings are cloned from the session so the downloader holds its own
-    /// snapshot and does not need to re-acquire the lock for every setting read.
-    pub fn new(session: Arc<Mutex<TidalSession>>) -> Result<Self> {
-        let settings = {
-            let sess = session.blocking_lock();
-            sess.settings.clone()
-        };
+    pub fn new(session: Arc<Mutex<TidalSession>>, settings: Settings) -> Self {
         let http_client = reqwest::Client::new();
-        Ok(Self {
+        Self {
             session,
             settings,
             http_client,
-        })
+        }
     }
 
     /// Borrow the shared session handle (for callers that need to make
@@ -165,13 +158,12 @@ impl Downloader {
 
         // --- 3. Check if file already exists --------------------------------
         let audio_extensions = ["flac", "m4a", "mp3", "mp4", "ts"];
-        if self.settings.skip_existing {
-            if let Some(_existing) = check_file_exists(&dest_path, &audio_extensions) {
+        if self.settings.skip_existing
+            && let Some(_existing) = check_file_exists(&dest_path, &audio_extensions) {
                 println!("Skipping (already exists): {}", dest_path.display());
                 self.apply_download_delay().await;
                 return Ok(());
             }
-        }
 
         // Use a unique suffix to avoid collisions when not skipping.
         let final_path = file_unique_suffix(&dest_path);
@@ -209,9 +201,16 @@ impl Downloader {
 
         pb.finish_and_clear();
 
+        // Debug: check temp file
+        if let Ok(meta) = tokio::fs::metadata(&temp_path).await {
+            eprintln!("Debug: temp file size = {} bytes", meta.len());
+        } else {
+            eprintln!("Debug: temp file not found at {}", temp_path.display());
+        }
+
         // --- 6. Decrypt if encrypted ---------------------------------------
-        if manifest.is_encrypted {
-            if let Some(ref key_id) = manifest.encryption_key {
+        if manifest.is_encrypted
+            && let Some(ref key_id) = manifest.encryption_key {
                 let (key, nonce) = decrypt::decrypt_security_token(key_id)
                     .context("Failed to decrypt security token")?;
 
@@ -219,7 +218,6 @@ impl Downloader {
                 let decrypted = decrypt::decrypt_file(&encrypted_data, &key, &nonce);
                 tokio::fs::write(&temp_path, &decrypted).await?;
             }
-        }
 
         // Track the current working file -- may change during video conversion
         // or FLAC extraction.
@@ -275,6 +273,8 @@ impl Downloader {
         }
 
         // --- 10. Move to final destination ---------------------------------
+        eprintln!("Debug: working_path = {}", working_path.display());
+        eprintln!("Debug: final_path  = {}", final_path.display());
         if working_path != final_path {
             tokio::fs::rename(&working_path, &final_path)
                 .await
@@ -297,21 +297,18 @@ impl Downloader {
         // --- 11. Save cover art and lyrics ---------------------------------
         let dest_dir = final_path.parent();
 
-        if self.settings.cover_album_file {
-            if let Some(dir) = dest_dir {
-                if let Some(cover_url) = self.track_cover_url(&track) {
+        if self.settings.cover_album_file
+            && let Some(dir) = dest_dir
+                && let Some(cover_url) = self.track_cover_url(&track) {
                     let cover_path = dir.join("cover.jpg");
-                    if !cover_path.exists() {
-                        if let Err(e) = self.download_cover(&cover_url, dir).await {
+                    if !cover_path.exists()
+                        && let Err(e) = self.download_cover(&cover_url, dir).await {
                             eprintln!("Warning: failed to download cover: {e}");
                         }
-                    }
                 }
-            }
-        }
 
-        if self.settings.lyrics_file {
-            if let Some(dir) = dest_dir {
+        if self.settings.lyrics_file
+            && let Some(dir) = dest_dir {
                 let lrc_name = format!(
                     "{}.lrc",
                     final_path
@@ -320,13 +317,11 @@ impl Downloader {
                         .to_string_lossy()
                 );
                 let lrc_path = dir.join(&lrc_name);
-                if !lrc_path.exists() {
-                    if let Err(e) = self.save_lyrics(track.id, dir).await {
+                if !lrc_path.exists()
+                    && let Err(e) = self.save_lyrics(track.id, dir).await {
                         eprintln!("Warning: failed to save lyrics: {e}");
                     }
-                }
             }
-        }
 
         // --- 12. Apply download delay --------------------------------------
         self.apply_download_delay().await;
@@ -384,8 +379,8 @@ impl Downloader {
         }
 
         // Create an M3U playlist file if configured.
-        if self.settings.playlist_create {
-            if let Some(m3u_name) = self.collection_name(&media_type, id).await {
+        if self.settings.playlist_create
+            && let Some(m3u_name) = self.collection_name(&media_type, id).await {
                 let base = expand_tilde(&self.settings.download_base_path);
                 let m3u_path =
                     PathBuf::from(&base).join(&m3u_name).with_extension("m3u");
@@ -398,7 +393,6 @@ impl Downloader {
                 let m3u_content = "#EXTM3U\n";
                 let _ = tokio::fs::write(&m3u_path, m3u_content).await;
             }
-        }
 
         Ok(())
     }
@@ -656,11 +650,10 @@ impl Downloader {
 fn expand_tilde(path: &str) -> String {
     if let Some(rest) = path.strip_prefix('~') {
         // Handle "~/..." and "~" (bare tilde).
-        if rest.is_empty() || rest.starts_with('/') {
-            if let Some(home) = dirs::home_dir() {
+        if (rest.is_empty() || rest.starts_with('/'))
+            && let Some(home) = dirs::home_dir() {
                 return format!("{}{}", home.display(), rest);
             }
-        }
     }
     path.to_string()
 }

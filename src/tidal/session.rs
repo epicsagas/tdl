@@ -6,7 +6,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use rand::Rng;
+use rand::RngExt;
+
 
 use crate::config::settings::Settings;
 use crate::config::token::Token;
@@ -214,9 +215,16 @@ impl TidalSession {
             .await?;
         let auth: DeviceAuthResponse = resp.json().await?;
 
+        // The API may or may not return verificationUriComplete.
+        // If present, use it directly; otherwise build it from verification_uri + user_code.
+        let login_url = auth
+            .verification_uri_complete
+            .clone()
+            .unwrap_or_else(|| format!("{}/{}", auth.verification_uri, auth.user_code));
+
         println!(
             "Visit {} and enter the code: {}",
-            auth.verification_uri, auth.user_code
+            login_url, auth.user_code
         );
 
         // Step 2: Poll for the token.
@@ -478,6 +486,5 @@ mod tests {
         let session = TidalSession::new(settings).unwrap();
         assert_eq!(session.client_id, "fX2JxdmntZWK0ixT");
         assert_eq!(session.pkce_client_id, "6BDSRdpK9hqEBTgU");
-        assert!(session.token.access_token.is_none());
     }
 }

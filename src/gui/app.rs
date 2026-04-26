@@ -1,0 +1,377 @@
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tauri::{Emitter, State};
+
+use crate::config::settings::Settings;
+use crate::config::token::Token;
+use crate::download::downloader::Downloader;
+use crate::tidal::media::MediaType;
+use crate::tidal::search;
+use crate::tidal::session::TidalSession;
+
+pub struct AppState {
+    pub session: Arc<Mutex<Option<Arc<Mutex<TidalSession>>>>>,
+}
+
+async fn ensure_session(
+    state: &State<'_, AppState>,
+) -> Result<Arc<Mutex<TidalSession>>, String> {
+    {
+        let guard = state.session.lock().await;
+        if let Some(session) = guard.as_ref() {
+            return Ok(Arc::clone(session));
+        }
+    }
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
+    session.login().await.map_err(|e| e.to_string())?;
+    let session = Arc::new(Mutex::new(session));
+    {
+        let mut guard = state.session.lock().await;
+        *guard = Some(Arc::clone(&session));
+    }
+    Ok(session)
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_settings() -> Result<serde_json::Value, String> {
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    serde_json::to_value(&settings).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn save_settings(settings: serde_json::Value) -> Result<(), String> {
+    let existing = Settings::load().map_err(|e| e.to_string())?;
+    let mut merged = serde_json::to_value(&existing).map_err(|e| e.to_string())?;
+    if let (serde_json::Value::Object(existing_map), serde_json::Value::Object(incoming)) =
+        (&mut merged, settings)
+    {
+        for (key, value) in incoming {
+            existing_map.insert(key, value);
+        }
+    }
+    let s: Settings = serde_json::from_value(merged).map_err(|e| e.to_string())?;
+    s.save().map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Auth
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_login_status() -> Result<serde_json::Value, String> {
+    let token = Token::load().unwrap_or_default();
+    Ok(serde_json::json!({
+        "logged_in": token.is_valid(),
+        "user_id": token.user_id,
+    }))
+}
+
+#[tauri::command]
+async fn login(state: State<'_, AppState>) -> Result<(), String> {
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
+    session.login().await.map_err(|e| e.to_string())?;
+    let session = Arc::new(Mutex::new(session));
+    {
+        let mut guard = state.session.lock().await;
+        *guard = Some(session);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn logout(state: State<'_, AppState>) -> Result<(), String> {
+    {
+        let mut guard = state.session.lock().await;
+        *guard = None;
+    }
+    Token::delete().map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn search_media(
+    state: State<'_, AppState>,
+    query: String,
+    limit: Option<u64>,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let results = search::TidalSearch::new(&sess.request)
+        .search(
+            &query,
+            &["tracks", "albums", "artists", "videos", "playlists"],
+            limit,
+            None,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&results).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_favorite_tracks(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let user_id = sess.token.user_id.ok_or("Not logged in")?;
+    let tracks = search::get_favorite_tracks(&sess.request, user_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&tracks).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_favorite_albums(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let user_id = sess.token.user_id.ok_or("Not logged in")?;
+    let albums = search::get_favorite_albums(&sess.request, user_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&albums).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_user_playlists(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let user_id = sess.token.user_id.ok_or("Not logged in")?;
+    let playlists = search::get_user_playlists(&sess.request, user_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&playlists).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Track listing
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn get_album_tracks(
+    state: State<'_, AppState>,
+    album_id: u64,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let tracks = search::get_album_tracks(&sess.request, album_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&tracks).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_playlist_tracks(
+    state: State<'_, AppState>,
+    playlist_id: String,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let tracks = search::get_playlist_tracks(&sess.request, &playlist_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&tracks).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_mix_items(
+    state: State<'_, AppState>,
+    mix_id: String,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let tracks = search::get_mix_items(&sess.request, &mix_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&tracks).map_err(|e| e.to_string())
+}
+
+// ---------------------------------------------------------------------------
+// Download with progress events
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+async fn download_url(
+    state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    url: String,
+) -> Result<(), String> {
+    let session = ensure_session(&state).await?;
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    let downloader = Downloader::new(Arc::clone(&session), settings);
+    let (media_type, id) = search::parse_media_url(&url).map_err(|e| e.to_string())?;
+
+    match media_type {
+        MediaType::Track | MediaType::Video => {
+            app_handle
+                .emit("download-start", serde_json::json!({"url": url}))
+                .ok();
+            let result = downloader.download_item(media_type, &id).await;
+            match result {
+                Ok(()) => {
+                    app_handle
+                        .emit("download-complete", serde_json::json!({"url": url}))
+                        .ok();
+                }
+                Err(e) => {
+                    app_handle
+                        .emit(
+                            "download-error",
+                            serde_json::json!({"url": url, "error": e.to_string()}),
+                        )
+                        .ok();
+                    return Err(e.to_string());
+                }
+            }
+        }
+        MediaType::Album | MediaType::Playlist | MediaType::Mix => {
+            let tracks = {
+                let sess = session.lock().await;
+                match media_type {
+                    MediaType::Album => {
+                        let aid: u64 =
+                            id.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+                        search::get_album_tracks(&sess.request, aid).await
+                    }
+                    MediaType::Playlist => {
+                        search::get_playlist_tracks(&sess.request, &id).await
+                    }
+                    MediaType::Mix => search::get_mix_items(&sess.request, &id).await,
+                    _ => Err(anyhow::anyhow!("Unsupported type")),
+                }
+                .map_err(|e| e.to_string())?
+            };
+
+            let total = tracks.len();
+            app_handle
+                .emit(
+                    "download-start",
+                    serde_json::json!({"url": url, "total": total}),
+                )
+                .ok();
+
+            for (i, track) in tracks.iter().enumerate() {
+                let title = track.title_display();
+                app_handle
+                    .emit(
+                        "download-progress",
+                        serde_json::json!({
+                            "url": url,
+                            "current": i + 1,
+                            "total": total,
+                            "track": title,
+                        }),
+                    )
+                    .ok();
+
+                if let Err(e) = downloader
+                    .download_item(MediaType::Track, &track.id.to_string())
+                    .await
+                {
+                    app_handle
+                        .emit(
+                            "download-error",
+                            serde_json::json!({"url": url, "track": title, "error": e.to_string()}),
+                        )
+                        .ok();
+                }
+            }
+
+            app_handle
+                .emit("download-complete", serde_json::json!({"url": url}))
+                .ok();
+        }
+        MediaType::Artist => {
+            let albums = {
+                let sess = session.lock().await;
+                let aid: u64 =
+                    id.parse().map_err(|e: std::num::ParseIntError| e.to_string())?;
+                search::get_artist_albums(&sess.request, aid)
+                    .await
+                    .map_err(|e| e.to_string())?
+            };
+
+            app_handle
+                .emit(
+                    "download-start",
+                    serde_json::json!({"url": url, "total": albums.len()}),
+                )
+                .ok();
+
+            for (i, album) in albums.iter().enumerate() {
+                app_handle
+                    .emit(
+                        "download-progress",
+                        serde_json::json!({
+                            "url": url,
+                            "current": i + 1,
+                            "total": albums.len(),
+                            "track": album.name.clone(),
+                        }),
+                    )
+                    .ok();
+
+                if let Err(e) = downloader
+                    .download_collection(MediaType::Album, &album.id.to_string())
+                    .await
+                {
+                    app_handle
+                        .emit(
+                            "download-error",
+                            serde_json::json!({
+                                "url": url,
+                                "track": album.name.clone(),
+                                "error": e.to_string(),
+                            }),
+                        )
+                        .ok();
+                }
+            }
+
+            app_handle
+                .emit("download-complete", serde_json::json!({"url": url}))
+                .ok();
+        }
+    }
+
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap
+// ---------------------------------------------------------------------------
+
+pub fn run_gui() {
+    tauri::Builder::default()
+        .manage(AppState {
+            session: Arc::new(Mutex::new(None)),
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            save_settings,
+            get_login_status,
+            login,
+            logout,
+            search_media,
+            get_favorite_tracks,
+            get_favorite_albums,
+            get_user_playlists,
+            get_album_tracks,
+            get_playlist_tracks,
+            get_mix_items,
+            download_url,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

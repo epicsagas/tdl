@@ -81,12 +81,23 @@ impl TidalRequest {
 
     /// Convenience method: send a V1 GET request and deserialize the JSON
     /// response into `T`.
+    ///
+    /// Returns a descriptive error if the API responds with a non-success
+    /// status code (4xx other than 429, which is handled by retry).
     pub async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
         params: Option<HashMap<String, String>>,
     ) -> Result<T> {
         let resp = self.get_v1(path, params).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "API {path} returned {status}: {}",
+                body.chars().take(500).collect::<String>()
+            ));
+        }
         let data: T = resp.json().await?;
         Ok(data)
     }
@@ -119,21 +130,27 @@ impl TidalRequest {
         self.send_with_retry(&url, &query).await
     }
 
-    /// Sends a GET request to the Tidal API V2 endpoint.
-    ///
-    /// The base URL is `TIDAL_API_V2`. The `path` argument is appended to that base.
-    /// Authorisation headers are added automatically.
-    ///
-    /// Retries on HTTP 429 (rate-limit) and 5xx responses using exponential back-off.
-    pub async fn get_v2(
+    /// Sends a GET request to the Tidal API V2 endpoint, returning
+    /// deserialized JSON. Checks for non-success status codes.
+    pub async fn get_v2<T: DeserializeOwned>(
         &self,
         path: &str,
         params: Option<HashMap<String, String>>,
-    ) -> Result<Response> {
+    ) -> Result<T> {
         let url = format!("{TIDAL_API_V2}{path}");
         let query = params.unwrap_or_default();
 
-        self.send_with_retry(&url, &query).await
+        let resp = self.send_with_retry(&url, &query).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(anyhow!(
+                "API v2 {path} returned {status}: {}",
+                body.chars().take(500).collect::<String>()
+            ));
+        }
+        let data: T = resp.json().await?;
+        Ok(data)
     }
 
     /// Sends a form-encoded POST request to the Tidal authentication endpoint.

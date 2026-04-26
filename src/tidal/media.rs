@@ -184,7 +184,7 @@ impl TryFrom<AlbumDeserialize> for Album {
 // Core media structs
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Artist {
     pub id: u64,
     pub name: String,
@@ -194,7 +194,7 @@ pub struct Artist {
     pub picture: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(try_from = "AlbumDeserialize")]
 pub struct Album {
     pub id: u64,
@@ -219,7 +219,7 @@ pub struct Album {
     pub populate: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Track {
     pub id: u64,
@@ -271,7 +271,7 @@ pub struct Track {
     pub peak: Option<f64>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Video {
     pub id: u64,
@@ -297,7 +297,7 @@ pub struct Video {
     pub share_url: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Playlist {
     #[serde(default)]
@@ -328,7 +328,7 @@ pub struct Playlist {
     pub public: Option<bool>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Creator {
     pub id: u64,
     pub name: String,
@@ -356,7 +356,7 @@ pub struct Mix {
 // Search response types
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct SearchResponse {
     #[serde(default)]
     pub tracks: Option<PaginatedResponse<Track>>,
@@ -372,7 +372,7 @@ pub struct SearchResponse {
     pub top_hit: Option<TopHit>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct PaginatedResponse<T> {
     #[serde(default)]
     pub total_num_rows: Option<u64>,
@@ -384,7 +384,7 @@ pub struct PaginatedResponse<T> {
     pub offset: Option<u64>,
 }
 
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct TopHit {
     #[serde(default)]
     pub value: serde_json::Value,
@@ -469,8 +469,8 @@ pub struct DeviceAuthResponse {
     pub device_code: String,
     pub user_code: String,
     pub verification_uri: String,
-    #[serde(rename = "verification_uri_complete")]
-    pub verification_uri_complete: String,
+    #[serde(rename = "verification_uri_complete", default)]
+    pub verification_uri_complete: Option<String>,
     pub expires_in: u64,
     pub interval: u64,
 }
@@ -506,17 +506,50 @@ pub struct FavoriteItem {
 }
 
 // ---------------------------------------------------------------------------
+// Mix page response (pages/mix endpoint)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MixPageResponse {
+    #[serde(default)]
+    pub categories: Vec<MixPageCategory>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MixPageCategory {
+    #[serde(rename = "type", default)]
+    pub category_type: Option<String>,
+    #[serde(default)]
+    pub header: Option<String>,
+    #[serde(default)]
+    pub paged_list: Option<MixPagedList>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MixPagedList {
+    #[serde(default)]
+    pub items: Vec<MixPageItem>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct MixPageItem {
+    #[serde(default)]
+    pub item: Option<serde_json::Value>,
+    #[serde(rename = "type", default)]
+    pub item_type: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
 // Helper impls
 // ---------------------------------------------------------------------------
 
 impl Track {
     /// Return a comma-separated list of artist names.
     pub fn artist_name(&self) -> String {
-        if let Some(artists) = &self.artists {
-            if !artists.is_empty() {
+        if let Some(artists) = &self.artists
+            && !artists.is_empty() {
                 return artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
             }
-        }
         self.artist
             .as_ref()
             .map(|a| a.name.clone())
@@ -715,6 +748,24 @@ mod tests {
         let auth: DeviceAuthResponse = serde_json::from_str(json).unwrap();
         assert_eq!(auth.device_code, "dc123");
         assert_eq!(auth.expires_in, 300);
+        assert_eq!(
+            auth.verification_uri_complete.as_deref(),
+            Some("https://link.tidal.com/AB12CD34")
+        );
+    }
+
+    #[test]
+    fn deserialize_device_auth_response_without_complete_uri() {
+        let json = r#"{
+            "deviceCode": "dc456",
+            "userCode": "XY98ZW76",
+            "verificationUri": "https://link.tidal.com",
+            "expiresIn": 300,
+            "interval": 5
+        }"#;
+        let auth: DeviceAuthResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(auth.device_code, "dc456");
+        assert!(auth.verification_uri_complete.is_none());
     }
 
     #[test]

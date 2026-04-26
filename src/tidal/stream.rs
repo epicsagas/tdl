@@ -382,11 +382,10 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
             }
             Ok(Event::Text(ref e)) => {
                 if in_base_url {
-                    if let Ok(text) = e.unescape() {
-                        let trimmed: &str = text.trim();
-                        if !trimmed.is_empty() && base_url.is_none() {
-                            base_url = Some(trimmed.to_string());
-                        }
+                    let text = e.as_ref();
+                    let trimmed = std::str::from_utf8(text).unwrap_or("").trim();
+                    if !trimmed.is_empty() && base_url.is_none() {
+                        base_url = Some(trimmed.to_string());
                     }
                 }
             }

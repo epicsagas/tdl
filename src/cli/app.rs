@@ -16,10 +16,14 @@ use crate::tidal::search::{
 use crate::tidal::session::TidalSession;
 
 #[derive(Parser)]
-#[command(name = "tidal-dl-ng", version, about = "Tidal music downloader")]
+#[command(name = "tdl", version, about = "Tidal music downloader")]
 pub struct Cli {
+    /// URLs to download (starting with https://)
+    #[arg(value_name = "URL")]
+    urls: Vec<String>,
+
     #[command(subcommand)]
-    pub command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Subcommand)]
@@ -41,6 +45,9 @@ pub enum Commands {
         /// Open settings file in editor
         #[arg(short, long)]
         editor: bool,
+        /// Interactive settings wizard
+        #[arg(short, long)]
+        wizard: bool,
     },
     /// Download media from URLs
     Dl {
@@ -53,6 +60,10 @@ pub enum Commands {
     /// Download favorites
     #[command(subcommand)]
     Fav(FavCommands),
+    /// Launch graphical interface
+    Gui,
+    /// Launch terminal UI
+    Tui,
 }
 
 #[derive(Subcommand)]
@@ -70,11 +81,22 @@ pub enum FavCommands {
 pub async fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // Bare URLs starting with https:// → download
+    if !cli.urls.is_empty() {
+        return handle_download(cli.urls, None).await;
+    }
+
     match cli.command {
+        // No subcommand and no URLs → launch TUI
+        None => {
+            let settings = Settings::load()?;
+            crate::tui::run_tui_with_rt(&settings, tokio::runtime::Handle::current())?;
+        }
+
         // ---------------------------------------------------------------
         // Login
         // ---------------------------------------------------------------
-        Commands::Login { pkce } => {
+        Some(Commands::Login { pkce }) => {
             let settings = Settings::load()?;
             let mut session = TidalSession::new(settings)?;
             if pkce {
@@ -87,7 +109,7 @@ pub async fn run() -> Result<()> {
         // ---------------------------------------------------------------
         // Logout
         // ---------------------------------------------------------------
-        Commands::Logout => {
+        Some(Commands::Logout) => {
             Token::delete()?;
             println!("Logged out successfully.");
         }
@@ -95,11 +117,12 @@ pub async fn run() -> Result<()> {
         // ---------------------------------------------------------------
         // Config
         // ---------------------------------------------------------------
-        Commands::Cfg {
+        Some(Commands::Cfg {
             key,
             value,
             editor,
-        } => {
+            wizard: _,
+        }) => {
             // --editor: open the settings file in the user's default editor
             if editor {
                 let path = Settings::config_path();
@@ -123,10 +146,9 @@ pub async fn run() -> Result<()> {
             let settings = Settings::load()?;
 
             match (key, value) {
-                // No args: print all settings as a table.
+                // No args: launch interactive TUI settings editor.
                 (None, None) => {
-                    let json = serde_json::to_string_pretty(&settings)?;
-                    println!("{}", json);
+                    let _ = crate::tui::run_settings_editor(&settings)?;
                 }
                 // One arg: print that setting's value.
                 (Some(k), None) => {
@@ -138,11 +160,9 @@ pub async fn run() -> Result<()> {
                 }
                 // Two args: set the value.
                 (Some(_k), Some(_v)) => {
-                    // For now, just inform the user that setting individual
-                    // values is not yet supported.  They can use --editor.
                     bail!(
                         "Setting individual values is not yet supported. \
-                         Use `tidal-dl-ng cfg --editor` to edit the settings file directly."
+                         Use `tdl cfg --editor` to edit the settings file directly."
                     );
                 }
                 (None, Some(_)) => unreachable!(),
@@ -150,64 +170,18 @@ pub async fn run() -> Result<()> {
         }
 
         // ---------------------------------------------------------------
-        // Download
+        // Download (dl subcommand for --list support)
         // ---------------------------------------------------------------
-        Commands::Dl { urls, list } => {
-            // Collect all URLs from args and optional list file.
-            let mut all_urls = urls;
-
-            if let Some(list_path) = list {
-                let contents =
-                    fs::read_to_string(&list_path).with_context(|| {
-                        format!("Failed to read URL list from {}", list_path)
-                    })?;
-                for line in contents.lines() {
-                    let trimmed = line.trim();
-                    if !trimmed.is_empty() && !trimmed.starts_with('#') {
-                        all_urls.push(trimmed.to_string());
-                    }
-                }
-            }
-
-            if all_urls.is_empty() {
-                bail!("No URLs provided. Pass URLs as arguments or use --list <file>.");
-            }
-
-            let settings = Settings::load()?;
-            let mut session = TidalSession::new(settings)?;
-            session.login().await?;
-
-            let session = Arc::new(Mutex::new(session));
-            let downloader = Downloader::new(session)?;
-
-            let total = all_urls.len() as u64;
-            let pb = indicatif::ProgressBar::new(total);
-            pb.set_style(
-                indicatif::ProgressStyle::default_bar()
-                    .template("{msg} [{bar:40}] {pos}/{len} ({eta})")?
-                    .progress_chars("=>-"),
-            );
-            pb.set_message("Downloading");
-
-            for url in &all_urls {
-                match downloader.download_url(url).await {
-                    Ok(()) => {}
-                    Err(e) => {
-                        pb.println(format!("Error downloading {}: {e}", url));
-                    }
-                }
-                pb.inc(1);
-            }
-
-            pb.finish_with_message("Done");
+        Some(Commands::Dl { urls, list }) => {
+            handle_download(urls, list).await?;
         }
 
         // ---------------------------------------------------------------
         // Favorites
         // ---------------------------------------------------------------
-        Commands::Fav(cmd) => {
+        Some(Commands::Fav(cmd)) => {
             let settings = Settings::load()?;
-            let mut session = TidalSession::new(settings)?;
+            let mut session = TidalSession::new(settings.clone())?;
             session.login().await?;
 
             let user_id = session
@@ -216,7 +190,7 @@ pub async fn run() -> Result<()> {
                 .ok_or_else(|| anyhow::anyhow!("Not logged in (no user ID in token)"))?;
 
             let session = Arc::new(Mutex::new(session));
-            let downloader = Downloader::new(session)?;
+            let downloader = Downloader::new(session, settings);
 
             match cmd {
                 FavCommands::Tracks => {
@@ -326,7 +300,82 @@ pub async fn run() -> Result<()> {
                 }
             }
         }
+
+        // ---------------------------------------------------------------
+        // GUI
+        // ---------------------------------------------------------------
+        Some(Commands::Gui) => {
+            run_gui();
+        }
+
+        // ---------------------------------------------------------------
+        // TUI
+        // ---------------------------------------------------------------
+        Some(Commands::Tui) => {
+            let settings = Settings::load()?;
+            crate::tui::run_tui_with_rt(&settings, tokio::runtime::Handle::current())?;
+        }
     }
 
     Ok(())
+}
+
+async fn handle_download(urls: Vec<String>, list: Option<String>) -> Result<()> {
+    let mut all_urls = urls;
+
+    if let Some(list_path) = list {
+        let contents =
+            fs::read_to_string(&list_path).with_context(|| {
+                format!("Failed to read URL list from {}", list_path)
+            })?;
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                all_urls.push(trimmed.to_string());
+            }
+        }
+    }
+
+    if all_urls.is_empty() {
+        bail!("No URLs provided. Pass URLs as arguments or use --list <file>.");
+    }
+
+    let settings = Settings::load()?;
+    let mut session = TidalSession::new(settings.clone())?;
+    session.login().await?;
+
+    let session = Arc::new(Mutex::new(session));
+    let downloader = Downloader::new(session, settings);
+
+    let total = all_urls.len() as u64;
+    let pb = indicatif::ProgressBar::new(total);
+    pb.set_style(
+        indicatif::ProgressStyle::default_bar()
+            .template("{msg} [{bar:40}] {pos}/{len} ({eta})")?
+            .progress_chars("=>-"),
+    );
+    pb.set_message("Downloading");
+
+    for url in &all_urls {
+        match downloader.download_url(url).await {
+            Ok(()) => {}
+            Err(e) => {
+                pb.println(format!("Error downloading {}: {e}", url));
+            }
+        }
+        pb.inc(1);
+    }
+
+    pb.finish_with_message("Done");
+    Ok(())
+}
+
+#[cfg(feature = "gui")]
+pub fn run_gui() {
+    crate::gui::run_gui();
+}
+
+#[cfg(not(feature = "gui"))]
+pub fn run_gui() {
+    eprintln!("GUI support not compiled. Rebuild with: cargo build --features gui");
 }

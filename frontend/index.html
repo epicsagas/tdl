@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tdl</title>
+<style>
+:root {
+    --bg: #1a1a2e;
+    --bg2: #16213e;
+    --bg3: #0f3460;
+    --accent: #00d2ff;
+    --accent2: #0099cc;
+    --text: #e0e0e0;
+    --text2: #8892b0;
+    --border: #233554;
+    --success: #2ed573;
+    --error: #ff4757;
+    --warn: #ffa502;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; height:100vh; }
+
+/* Layout */
+#app { display:flex; height:calc(100vh - 36px); }
+
+/* Sidebar */
+#sidebar {
+    width: 210px; min-width:210px; background:var(--bg2);
+    border-right:1px solid var(--border); display:flex; flex-direction:column;
+    user-select:none;
+}
+.brand {
+    padding:16px 20px 14px; font-size:20px; font-weight:700;
+    color:var(--accent); border-bottom:1px solid var(--border);
+    letter-spacing:1px;
+}
+.nav-group { padding:12px 0; }
+.nav-group-title {
+    padding:4px 20px; font-size:11px; text-transform:uppercase;
+    color:var(--text2); letter-spacing:1px; font-weight:600;
+}
+.nav-btn {
+    display:block; width:100%; padding:8px 20px; background:none;
+    border:none; color:var(--text2); text-align:left; cursor:pointer;
+    font-size:13px; transition:all .15s; border-left:3px solid transparent;
+}
+.nav-btn:hover { background:rgba(0,210,255,.06); color:var(--text); }
+.nav-btn.active { background:rgba(0,210,255,.1); color:var(--accent); border-left-color:var(--accent); }
+.nav-btn .badge { float:right; font-size:11px; opacity:.5; }
+
+/* Main */
+#main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.page { display:none; flex:1; flex-direction:column; overflow:hidden; }
+.page.active { display:flex; }
+.page-header {
+    padding:16px 24px 12px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:12px; flex-shrink:0;
+}
+.page-header h1 { font-size:18px; font-weight:600; }
+.page-body { flex:1; overflow-y:auto; padding:0; }
+
+/* Right panel */
+#panel {
+    width:280px; min-width:280px; background:var(--bg2);
+    border-left:1px solid var(--border); display:flex; flex-direction:column;
+}
+#cover-area {
+    padding:16px; text-align:center; border-bottom:1px solid var(--border);
+    min-height:180px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+}
+#cover-area img { max-width:200px; max-height:200px; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
+#cover-area .placeholder { color:var(--text2); font-size:13px; }
+#cover-area .cover-title { margin-top:10px; font-size:13px; font-weight:600; color:var(--text); }
+#cover-area .cover-artist { font-size:12px; color:var(--text2); }
+#queue-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+#queue-area h3 {
+    padding:12px 16px 8px; font-size:13px; color:var(--text2);
+    text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border);
+}
+#queue-list { flex:1; overflow-y:auto; }
+.queue-item {
+    padding:8px 16px; border-bottom:1px solid var(--border);
+    font-size:12px;
+}
+.queue-item .q-name { margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.queue-item .q-bar { height:3px; background:var(--bg3); border-radius:2px; }
+.queue-item .q-bar .q-fill { height:100%; border-radius:2px; transition:width .3s; }
+.queue-item.downloading .q-fill { background:var(--accent); }
+.queue-item.completed .q-fill { background:var(--success); width:100%!important; }
+.queue-item.error .q-fill { background:var(--error); }
+.queue-item .q-status { font-size:11px; color:var(--text2); margin-top:3px; }
+
+/* Status bar */
+#statusbar {
+    height:36px; padding:0 24px; background:var(--bg2);
+    border-top:1px solid var(--border); display:flex; align-items:center;
+    font-size:12px; color:var(--text2); gap:16px;
+}
+#statusbar .dot { width:6px; height:6px; border-radius:50%; background:var(--success); }
+#statusbar .dot.off { background:var(--error); }
+
+/* --- Download page --- */
+.dl-input-row { display:flex; gap:8px; flex:1; }
+.dl-input-row input {
+    flex:1; background:var(--bg3); border:1px solid var(--border);
+    color:var(--text); padding:8px 12px; border-radius:4px; font-size:13px;
+}
+.dl-input-row input:focus { outline:none; border-color:var(--accent); }
+.btn {
+    padding:8px 16px; background:var(--bg3); color:var(--accent);
+    border:1px solid var(--accent2); border-radius:4px; cursor:pointer;
+    font-size:13px; white-space:nowrap; transition:background .15s;
+}
+.btn:hover { background:var(--accent2); color:#fff; }
+.btn-sm { padding:5px 10px; font-size:12px; }
+.btn-danger { border-color:var(--error); color:var(--error); }
+.btn-danger:hover { background:var(--error); color:#fff; }
+.dl-list { flex:1; overflow-y:auto; }
+.dl-item {
+    padding:10px 24px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:12px; font-size:13px;
+}
+.dl-item .dl-icon { width:20px; text-align:center; }
+.dl-item .dl-info { flex:1; min-width:0; }
+.dl-item .dl-title { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.dl-item .dl-sub { font-size:11px; color:var(--text2); }
+.dl-item .dl-action { flex-shrink:0; }
+
+/* --- Search page --- */
+.search-bar { display:flex; gap:8px; flex:1; }
+.search-bar input {
+    flex:1; background:var(--bg3); border:1px solid var(--border);
+    color:var(--text); padding:8px 12px; border-radius:4px; font-size:13px;
+}
+.search-bar input:focus { outline:none; border-color:var(--accent); }
+.search-filter { display:flex; gap:4px; }
+.filter-btn {
+    padding:6px 12px; background:var(--bg3); border:1px solid var(--border);
+    color:var(--text2); border-radius:4px; cursor:pointer; font-size:12px;
+}
+.filter-btn.active { background:rgba(0,210,255,.15); color:var(--accent); border-color:var(--accent2); }
+
+/* Track table */
+.track-table { width:100%; border-collapse:collapse; }
+.track-table th {
+    padding:8px 16px; text-align:left; font-size:11px;
+    text-transform:uppercase; color:var(--text2); border-bottom:1px solid var(--border);
+    position:sticky; top:0; background:var(--bg); z-index:1; font-weight:600;
+}
+.track-table td { padding:7px 16px; font-size:13px; border-bottom:1px solid rgba(35,53,84,.5); }
+.track-table tr:hover td { background:rgba(0,210,255,.04); }
+.track-table tr.selected td { background:rgba(0,210,255,.1); }
+.track-table .col-num { width:40px; color:var(--text2); }
+.track-table .col-dur { width:60px; color:var(--text2); text-align:right; }
+.track-table .col-artist { color:var(--text2); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.track-table .col-album { color:var(--text2); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dl-btn {
+    padding:3px 10px; background:none; border:1px solid var(--accent2);
+    color:var(--accent); border-radius:3px; cursor:pointer; font-size:11px;
+}
+.dl-btn:hover { background:var(--accent2); color:#fff; }
+
+/* Album grid */
+.album-grid {
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    gap:16px; padding:16px 24px;
+}
+.album-card {
+    background:var(--bg2); border-radius:8px; overflow:hidden; cursor:pointer;
+    transition:transform .15s, box-shadow .15s; border:1px solid var(--border);
+}
+.album-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.3); }
+.album-card img { width:100%; aspect-ratio:1; object-fit:cover; background:var(--bg3); }
+.album-card .card-info { padding:8px 10px; }
+.album-card .card-title { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.album-card .card-sub { font-size:11px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* Playlist list */
+.pl-item {
+    padding:10px 24px; border-bottom:1px solid var(--border);
+    cursor:pointer; display:flex; align-items:center; gap:12px;
+}
+.pl-item:hover { background:rgba(0,210,255,.04); }
+.pl-item .pl-icon { font-size:20px; color:var(--accent); width:30px; text-align:center; }
+.pl-item .pl-info { flex:1; min-width:0; }
+.pl-item .pl-name { font-size:13px; font-weight:500; }
+.pl-item .pl-count { font-size:11px; color:var(--text2); }
+.pl-item .pl-dl { flex-shrink:0; }
+
+/* Settings */
+.settings-scroll { flex:1; overflow-y:auto; padding:16px 24px; }
+.settings-row {
+    display:flex; align-items:center; padding:10px 0;
+    border-bottom:1px solid rgba(35,53,84,.4);
+}
+.settings-row .s-label { width:200px; font-size:13px; color:var(--text2); }
+.settings-row .s-value { flex:1; }
+.settings-row input[type=text], .settings-row select {
+    background:var(--bg3); border:1px solid var(--border); color:var(--text);
+    padding:6px 10px; border-radius:4px; font-size:13px; width:100%; max-width:400px;
+}
+.settings-row input:focus, .settings-row select:focus { outline:none; border-color:var(--accent); }
+
+/* Toggle */
+.toggle { position:relative; width:40px; height:22px; cursor:pointer; display:inline-block; }
+.toggle input { opacity:0; width:0; height:0; }
+.toggle .slider {
+    position:absolute; inset:0; background:#333; border-radius:11px; transition:.2s;
+}
+.toggle .slider::before {
+    content:''; position:absolute; width:16px; height:16px; left:3px; bottom:3px;
+    background:#666; border-radius:50%; transition:.2s;
+}
+.toggle input:checked+.slider { background:var(--accent2); }
+.toggle input:checked+.slider::before { transform:translateX(18px); background:var(--accent); }
+
+/* Account */
+.account-card {
+    margin:24px; padding:24px; background:var(--bg2); border-radius:8px;
+    border:1px solid var(--border);
+}
+.account-status { display:flex; align-items:center; gap:12px; margin-bottom:20px; }
+.account-status .dot { width:10px; height:10px; border-radius:50%; }
+.account-status .dot.on { background:var(--success); }
+.account-status .dot.off { background:var(--error); }
+.account-actions { display:flex; gap:8px; }
+
+/* Utility */
+.hidden { display:none!important; }
+.empty { padding:40px; text-align:center; color:var(--text2); font-size:14px; }
+.loading { padding:40px; text-align:center; color:var(--accent); font-size:14px; }
+.error-msg { color:var(--error); }
+</style>
+</head>
+<body>
+
+<div id="app">
+<!-- Sidebar -->
+<aside id="sidebar">
+    <div class="brand">tdl</div>
+    <div class="nav-group">
+        <button class="nav-btn active" data-page="download">Download</button>
+        <button class="nav-btn" data-page="search">Search</button>
+    </div>
+    <div class="nav-group">
+        <div class="nav-group-title">Library</div>
+        <button class="nav-btn" data-page="favorites">Favorites</button>
+        <button class="nav-btn" data-page="playlists">Playlists</button>
+    </div>
+    <div class="nav-group">
+        <div class="nav-group-title">Settings</div>
+        <button class="nav-btn" data-page="settings">Settings</button>
+        <button class="nav-btn" data-page="account">Account</button>
+    </div>
+</aside>
+
+<!-- Main -->
+<main id="main">
+    <!-- Download -->
+    <div id="page-download" class="page active">
+        <div class="page-header">
+            <h1>Download</h1>
+            <div class="dl-input-row">
+                <input id="dl-url" placeholder="Paste Tidal URL..." onkeydown="if(event.key==='Enter')startDownload()">
+                <button class="btn" onclick="startDownload()">Download</button>
+            </div>
+        </div>
+        <div class="dl-list" id="dl-list"></div>
+    </div>
+
+    <!-- Search -->
+    <div id="page-search" class="page">
+        <div class="page-header">
+            <h1>Search</h1>
+            <div class="search-bar">
+                <input id="search-input" placeholder="Search Tidal..." onkeydown="if(event.key==='Enter')doSearch()">
+                <button class="btn" onclick="doSearch()">Search</button>
+            </div>
+            <div class="search-filter">
+                <button class="filter-btn active" data-filter="tracks">Tracks</button>
+                <button class="filter-btn" data-filter="albums">Albums</button>
+                <button class="filter-btn" data-filter="playlists">Playlists</button>
+            </div>
+        </div>
+        <div class="page-body" id="search-results"></div>
+    </div>
+
+    <!-- Favorites -->
+    <div id="page-favorites" class="page">
+        <div class="page-header">
+            <h1>Favorites</h1>
+            <div class="search-filter">
+                <button class="filter-btn active" data-fav="tracks" onclick="loadFav('tracks')">Tracks</button>
+                <button class="filter-btn" data-fav="albums" onclick="loadFav('albums')">Albums</button>
+            </div>
+            <button class="btn btn-sm" onclick="downloadAllFav()">Download All</button>
+        </div>
+        <div class="page-body" id="fav-results"></div>
+    </div>
+
+    <!-- Playlists -->
+    <div id="page-playlists" class="page">
+        <div class="page-header">
+            <h1>Playlists</h1>
+            <button class="btn btn-sm" onclick="loadPlaylists()">Refresh</button>
+        </div>
+        <div class="page-body" id="pl-results"></div>
+    </div>
+
+    <!-- Settings -->
+    <div id="page-settings" class="page">
+        <div class="page-header">
+            <h1>Settings</h1>
+            <button class="btn" onclick="saveSettings()">Save</button>
+        </div>
+        <div class="settings-scroll" id="settings-body"></div>
+    </div>
+
+    <!-- Account -->
+    <div id="page-account" class="page">
+        <div class="page-header"><h1>Account</h1></div>
+        <div class="page-body" id="account-body"></div>
+    </div>
+</main>
+
+<!-- Right panel -->
+<aside id="panel">
+    <div id="cover-area">
+        <div class="placeholder">No track selected</div>
+    </div>
+    <div id="queue-area">
+        <h3>Download Queue <span id="queue-count" class="badge">0</span></h3>
+        <div id="queue-list"></div>
+    </div>
+</aside>
+</div>
+
+<div id="statusbar">
+    <span class="dot" id="status-dot"></span>
+    <span id="status-text">Ready</span>
+</div>
+
+<script>
+// Robust Tauri v2 API access
+const _t = window.__TAURI__;
+function invoke(cmd, args) {
+    if (_t?.core?.invoke) return _t.core.invoke(cmd, args);
+    if (_t?.invoke) return _t.invoke(cmd, args);
+    return Promise.reject(new Error('Tauri invoke not available'));
+}
+function listen(event, handler) {
+    if (_t?.event?.listen) return _t.event.listen(event, handler);
+    return Promise.reject(new Error('Tauri listen not available'));
+}
+
+// ---- State ----
+let searchFilter = 'tracks';
+let favType = 'tracks';
+let favTracks = [];
+let favAlbums = [];
+let playlistTracks = [];
+const queue = new Map();
+
+// ---- Navigation ----
+document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const page = btn.dataset.page;
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById('page-' + page).classList.add('active');
+        if (page === 'settings') loadSettings();
+        if (page === 'account') loadAccount();
+        if (page === 'favorites') loadFav(favType);
+        if (page === 'playlists') loadPlaylists();
+    });
+});
+
+// Search filter buttons
+document.querySelectorAll('[data-filter]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        searchFilter = btn.dataset.filter;
+        doSearch();
+    });
+});
+
+function setStatus(msg) { document.getElementById('status-text').textContent = msg; }
+function fmtDuration(sec) {
+    if (!sec) return '';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+}
+function artistName(item) {
+    if (item.artists?.length) return item.artists.map(a => a.name).join(', ');
+    return item.artist?.name || '';
+}
+function trackTitle(t) { return t.fullName || t.title || t.name || ''; }
+function coverUrl(uuid, size = 320) {
+    if (!uuid) return '';
+    return `https://resources.tidal.com/images/${uuid}/${size}x${size}.jpg`;
+}
+
+// ---- Cover art ----
+function setCover(title, artist, coverUuid) {
+    const area = document.getElementById('cover-area');
+    const img = coverUrl(coverUuid);
+    area.innerHTML = img
+        ? `<img src="${img}" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><div class="placeholder" style="display:none">No cover</div>`
+        : '<div class="placeholder">No cover</div>';
+    if (title) area.innerHTML += `<div class="cover-title">${title}</div>`;
+    if (artist) area.innerHTML += `<div class="cover-artist">${artist}</div>`;
+}
+
+// ---- Queue ----
+function addToQueue(url, name) {
+    const id = Date.now().toString();
+    queue.set(id, { url, name, status: 'downloading', progress: '' });
+    renderQueue();
+    return id;
+}
+function updateQueue(id, status, progress) {
+    const item = queue.get(id);
+    if (!item) return;
+    item.status = status;
+    if (progress) item.progress = progress;
+    renderQueue();
+}
+function renderQueue() {
+    const list = document.getElementById('queue-list');
+    const count = document.getElementById('queue-count');
+    count.textContent = queue.size;
+    list.innerHTML = '';
+    for (const [id, item] of queue) {
+        const pct = item.status === 'completed' ? 100 : item.status === 'error' ? 100 : 0;
+        list.innerHTML += `<div class="queue-item ${item.status}">
+            <div class="q-name">${item.name}</div>
+            <div class="q-bar"><div class="q-fill" style="width:${pct}%"></div></div>
+            <div class="q-status">${item.status === 'downloading' ? item.progress || 'Downloading...' : item.status}</div>
+        </div>`;
+    }
+}
+
+// ---- Download ----
+async function startDownload() {
+    const input = document.getElementById('dl-url');
+    const url = input.value.trim();
+    if (!url) return;
+    input.value = '';
+    dlUrl(url);
+}
+
+async function dlUrl(url, name) {
+    const displayName = name || url;
+    setStatus('Downloading: ' + displayName);
+    const qid = addToQueue(url, displayName);
+
+    try {
+        await invoke('download_url', { url });
+        updateQueue(qid, 'completed');
+        setStatus('Done: ' + displayName);
+        addDlLog(displayName, 'completed');
+    } catch (e) {
+        updateQueue(qid, 'error');
+        setStatus('Error: ' + e);
+        addDlLog(displayName, 'error', e);
+    }
+}
+
+function addDlLog(name, status, error) {
+    const list = document.getElementById('dl-list');
+    const icon = status === 'completed' ? '&#10003;' : '&#10007;';
+    const color = status === 'completed' ? 'var(--success)' : 'var(--error)';
+    const sub = error ? `<div class="dl-sub error-msg">${error}</div>` : '';
+    list.innerHTML = `<div class="dl-item">
+        <div class="dl-icon" style="color:${color}">${icon}</div>
+        <div class="dl-info"><div class="dl-title">${name}</div>${sub}</div>
+    </div>` + list.innerHTML;
+}
+
+// ---- Search ----
+async function doSearch() {
+    const q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+    const area = document.getElementById('search-results');
+    area.innerHTML = '<div class="loading">Searching...</div>';
+
+    try {
+        const res = await invoke('search_media', { query: q, limit: 50 });
+        if (searchFilter === 'tracks') renderSearchTracks(res.tracks?.items || []);
+        else if (searchFilter === 'albums') renderSearchAlbums(res.albums?.items || []);
+        else if (searchFilter === 'playlists') renderSearchPlaylists(res.playlists?.items || []);
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Search failed: ${e}</div>`;
+    }
+}
+
+function renderSearchTracks(tracks) {
+    const area = document.getElementById('search-results');
+    if (!tracks.length) { area.innerHTML = '<div class="empty">No tracks found</div>'; return; }
+    let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
+    tracks.forEach((t, i) => {
+        const album = t.album || {};
+        setCover(trackTitle(t), artistName(t), album.cover);
+        html += `<tr>
+            <td class="col-num">${i + 1}</td>
+            <td class="col-artist">${artistName(t)}</td>
+            <td>${trackTitle(t)}</td>
+            <td class="col-album">${album.name || ''}</td>
+            <td class="col-dur">${fmtDuration(t.duration)}</td>
+            <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    area.innerHTML = html;
+    // Set cover to first track
+    if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
+}
+
+function renderSearchAlbums(albums) {
+    const area = document.getElementById('search-results');
+    if (!albums.length) { area.innerHTML = '<div class="empty">No albums found</div>'; return; }
+    let html = '<div class="album-grid">';
+    albums.forEach(a => {
+        const img = coverUrl(a.cover, 320);
+        const artist = a.artist?.name || a.artists?.find(ar => ar.role === 'MAIN')?.name || '';
+        html += `<div class="album-card" onclick="browseAlbum(${a.id},'${a.name.replace(/'/g,"\\'")}')">
+            ${img ? `<img src="${img}" loading="lazy">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
+            <div class="card-info">
+                <div class="card-title">${a.name || ''}</div>
+                <div class="card-sub">${artist}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    area.innerHTML = html;
+}
+
+function renderSearchPlaylists(playlists) {
+    const area = document.getElementById('search-results');
+    if (!playlists.length) { area.innerHTML = '<div class="empty">No playlists found</div>'; return; }
+    let html = '';
+    playlists.forEach(p => {
+        const id = p.uuid || p.id || '';
+        const count = p.numTracks || 0;
+        html += `<div class="pl-item" onclick="browsePlaylist('${id}','${(p.name||'').replace(/'/g,"\\'")}')">
+            <div class="pl-icon">&#9835;</div>
+            <div class="pl-info">
+                <div class="pl-name">${p.name || 'Untitled'}</div>
+                <div class="pl-count">${count} tracks</div>
+            </div>
+            <div class="pl-dl"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/playlist/${id}','${(p.name||'Playlist').replace(/'/g,"\\'")}')">DL All</button></div>
+        </div>`;
+    });
+    area.innerHTML = html;
+}
+
+// ---- Browse album/playlist ----
+async function browseAlbum(albumId, name) {
+    const area = document.getElementById('search-results');
+    area.innerHTML = '<div class="loading">Loading tracks...</div>';
+    try {
+        const tracks = await invoke('get_album_tracks', { albumId });
+        if (tracks.length) setCover(name, artistName(tracks[0]), tracks[0]?.album?.cover);
+        renderSearchTracks(tracks);
+        // Add download all button
+        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/album/${albumId}','${name.replace(/'/g,"\\'")}')">Download Album</button></div>` + area.innerHTML;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+async function browsePlaylist(plId, name) {
+    const area = document.getElementById('search-results');
+    area.innerHTML = '<div class="loading">Loading tracks...</div>';
+    try {
+        const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
+        renderSearchTracks(tracks);
+        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/playlist/${plId}','${name.replace(/'/g,"\\'")}')">Download Playlist</button></div>` + area.innerHTML;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+// ---- Favorites ----
+async function loadFav(type) {
+    favType = type;
+    document.querySelectorAll('[data-fav]').forEach(b => {
+        b.classList.toggle('active', b.dataset.fav === type);
+    });
+    const area = document.getElementById('fav-results');
+    area.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+        if (type === 'tracks') {
+            favTracks = await invoke('get_favorite_tracks');
+            renderFavTracks(favTracks);
+        } else {
+            favAlbums = await invoke('get_favorite_albums');
+            renderFavAlbums(favAlbums);
+        }
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+function renderFavTracks(tracks) {
+    const area = document.getElementById('fav-results');
+    if (!tracks.length) { area.innerHTML = '<div class="empty">No favorite tracks</div>'; return; }
+    if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
+    let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
+    tracks.forEach((t, i) => {
+        html += `<tr>
+            <td class="col-num">${i + 1}</td>
+            <td class="col-artist">${artistName(t)}</td>
+            <td>${trackTitle(t)}</td>
+            <td class="col-album">${t.album?.name || ''}</td>
+            <td class="col-dur">${fmtDuration(t.duration)}</td>
+            <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
+        </tr>`;
+    });
+    html += '</tbody></table>';
+    area.innerHTML = html;
+}
+
+function renderFavAlbums(albums) {
+    const area = document.getElementById('fav-results');
+    if (!albums.length) { area.innerHTML = '<div class="empty">No favorite albums</div>'; return; }
+    let html = '<div class="album-grid">';
+    albums.forEach(a => {
+        const img = coverUrl(a.cover, 320);
+        html += `<div class="album-card" onclick="browseFavAlbum(${a.id},'${(a.name||'').replace(/'/g,"\\'")}')">
+            ${img ? `<img src="${img}" loading="lazy">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
+            <div class="card-info">
+                <div class="card-title">${a.name || ''}</div>
+                <div class="card-sub">${a.artist?.name || ''}</div>
+            </div>
+        </div>`;
+    });
+    html += '</div>';
+    area.innerHTML = html;
+}
+
+async function browseFavAlbum(albumId, name) {
+    const area = document.getElementById('fav-results');
+    area.innerHTML = '<div class="loading">Loading tracks...</div>';
+    try {
+        const tracks = await invoke('get_album_tracks', { albumId });
+        renderFavTracks(tracks);
+        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/album/${albumId}','${name.replace(/'/g,"\\'")}')">Download Album</button></div>` + area.innerHTML;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+function downloadAllFav() {
+    const items = favType === 'tracks' ? favTracks : favAlbums;
+    if (!items.length) return;
+    if (favType === 'tracks') {
+        items.forEach(t => dlUrl(`https://tidal.com/browse/track/${t.id}`, `${artistName(t)} - ${trackTitle(t)}`));
+    } else {
+        items.forEach(a => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name));
+    }
+}
+
+// ---- Playlists ----
+async function loadPlaylists() {
+    const area = document.getElementById('pl-results');
+    area.innerHTML = '<div class="loading">Loading...</div>';
+    try {
+        const playlists = await invoke('get_user_playlists');
+        if (!playlists.length) { area.innerHTML = '<div class="empty">No playlists found</div>'; return; }
+        let html = '';
+        playlists.forEach(p => {
+            const id = p.uuid || p.id || '';
+            html += `<div class="pl-item" onclick="browsePlTracks('${id}','${(p.name||'').replace(/'/g,"\\'")}')">
+                <div class="pl-icon">&#9835;</div>
+                <div class="pl-info">
+                    <div class="pl-name">${p.name || 'Untitled'}</div>
+                    <div class="pl-count">${p.numTracks || 0} tracks${p.creator ? ' &middot; ' + p.creator.name : ''}</div>
+                </div>
+                <div class="pl-dl"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/playlist/${id}','${(p.name||'Playlist').replace(/'/g,"\\'")}')">DL</button></div>
+            </div>`;
+        });
+        area.innerHTML = html;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+async function browsePlTracks(plId, name) {
+    const area = document.getElementById('pl-results');
+    area.innerHTML = `<div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <button class="btn btn-sm" onclick="loadPlaylists()">&larr; Back</button>
+        <strong>${name}</strong>
+        <button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/playlist/${plId}','${name.replace(/'/g,"\\'")}')">Download All</button>
+    </div><div class="loading">Loading...</div>`;
+    try {
+        const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
+        playlistTracks = tracks;
+        if (tracks[0]?.album?.cover) setCover(name, '', tracks[0].album.cover);
+        let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
+        tracks.forEach((t, i) => {
+            html += `<tr>
+                <td class="col-num">${i + 1}</td>
+                <td class="col-artist">${artistName(t)}</td>
+                <td>${trackTitle(t)}</td>
+                <td class="col-album">${t.album?.name || ''}</td>
+                <td class="col-dur">${fmtDuration(t.duration)}</td>
+                <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
+            </tr>`;
+        });
+        html += '</tbody></table>';
+        area.innerHTML = area.innerHTML.replace('<div class="loading">Loading...</div>', '') + html;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+// ---- Settings ----
+const settingsFields = [
+    { key:'quality_audio', label:'Audio Quality', type:'enum', options:['low_96k','low_320k','high_lossless','hi_res_lossless'] },
+    { key:'quality_video', label:'Video Quality', type:'enum', options:['p360','p480','p720','p1080'] },
+    { key:'skip_existing', label:'Skip Existing', type:'bool' },
+    { key:'download_delay', label:'Download Delay', type:'bool' },
+    { key:'download_delay_sec_min', label:'Delay Min (s)', type:'number' },
+    { key:'download_delay_sec_max', label:'Delay Max (s)', type:'number' },
+    { key:'downloads_concurrent_max', label:'Concurrent Max', type:'number' },
+    { key:'downloads_simultaneous_per_track_max', label:'Segments/Track', type:'number' },
+    { key:'download_base_path', label:'Download Path', type:'text' },
+    { key:'path_binary_ffmpeg', label:'FFmpeg Path', type:'text' },
+    { key:'video_convert_mp4', label:'Convert to MP4', type:'bool' },
+    { key:'metadata_cover_dimension', label:'Cover Size', type:'enum', options:['px80','px160','px320','px640','px1280'] },
+    { key:'metadata_cover_embed', label:'Embed Cover', type:'bool' },
+    { key:'cover_album_file', label:'Cover File', type:'bool' },
+    { key:'extract_flac', label:'Extract FLAC', type:'bool' },
+    { key:'lyrics_embed', label:'Embed Lyrics', type:'bool' },
+    { key:'lyrics_file', label:'Lyrics File', type:'bool' },
+    { key:'metadata_replay_gain', label:'ReplayGain', type:'bool' },
+    { key:'playlist_create', label:'Create Playlist', type:'bool' },
+    { key:'album_track_num_pad_min', label:'Track Pad', type:'number' },
+];
+
+async function loadSettings() {
+    const settings = await invoke('get_settings');
+    const body = document.getElementById('settings-body');
+    body.innerHTML = '';
+    settingsFields.forEach(f => {
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+        row.innerHTML = `<div class="s-label">${f.label}</div><div class="s-value"></div>`;
+        const val = row.querySelector('.s-value');
+        if (f.type === 'bool') {
+            val.innerHTML = `<label class="toggle"><input type="checkbox" data-key="${f.key}" ${settings[f.key]?'checked':''}><span class="slider"></span></label>`;
+        } else if (f.type === 'enum') {
+            let opts = f.options.map(o => `<option value="${o}" ${settings[f.key]===o?'selected':''}>${o}</option>`).join('');
+            val.innerHTML = `<select data-key="${f.key}">${opts}</select>`;
+        } else {
+            val.innerHTML = `<input type="text" data-key="${f.key}" value="${settings[f.key] ?? ''}">`;
+        }
+        body.appendChild(row);
+    });
+}
+
+async function saveSettings() {
+    const settings = {};
+    document.querySelectorAll('#settings-body [data-key]').forEach(el => {
+        if (el.type === 'checkbox') settings[el.dataset.key] = el.checked;
+        else {
+            const v = el.value;
+            settings[el.dataset.key] = isNaN(v) || v === '' ? v : Number(v);
+        }
+    });
+    try {
+        await invoke('save_settings', { settings });
+        setStatus('Settings saved');
+    } catch (e) {
+        setStatus('Save failed: ' + e);
+        alert('Failed to save settings: ' + e);
+    }
+}
+
+// ---- Account ----
+async function loadAccount() {
+    const body = document.getElementById('account-body');
+    try {
+        const status = await invoke('get_login_status');
+        const on = status.logged_in;
+        document.getElementById('status-dot').className = 'dot' + (on ? '' : ' off');
+        body.innerHTML = `<div class="account-card">
+            <div class="account-status">
+                <span class="dot ${on?'on':'off'}"></span>
+                <span>${on ? 'Logged in as user ' + (status.user_id || '') : 'Not logged in'}</span>
+            </div>
+            <div class="account-actions">
+                ${on ? '<button class="btn btn-danger" onclick="doLogout()">Logout</button>' : '<button class="btn" onclick="doLogin()">Login (OAuth)</button><button class="btn" onclick="doLoginPkce()">Login (PKCE)</button>'}
+            </div>
+        </div>`;
+    } catch {
+        document.getElementById('status-dot').className = 'dot off';
+        body.innerHTML = `<div class="account-card">
+            <div class="account-status"><span class="dot off"></span><span>Not logged in</span></div>
+            <div class="account-actions">
+                <button class="btn" onclick="doLogin()">Login (OAuth)</button>
+                <button class="btn" onclick="doLoginPkce()">Login (PKCE)</button>
+            </div>
+        </div>`;
+    }
+}
+
+async function doLogin() {
+    setStatus('Logging in... (check terminal for URL)');
+    try { await invoke('login'); setStatus('Login successful'); }
+    catch (e) { setStatus('Login failed: ' + e); }
+    loadAccount();
+}
+async function doLoginPkce() {
+    setStatus('PKCE login... (check terminal)');
+    try { await invoke('login'); setStatus('Login successful'); }
+    catch (e) { setStatus('Login failed: ' + e); }
+    loadAccount();
+}
+async function doLogout() {
+    await invoke('logout');
+    setStatus('Logged out');
+    loadAccount();
+}
+
+// ---- Event listeners (download progress) ----
+if (listen) {
+    listen('download-start', e => {
+        const p = e.payload;
+        setStatus(`Downloading: ${p.url} (${p.total || 1} items)`);
+    });
+    listen('download-progress', e => {
+        const p = e.payload;
+        setStatus(`[${p.current}/${p.total}] ${p.track}`);
+    });
+    listen('download-complete', e => {
+        setStatus('Download complete');
+    });
+    listen('download-error', e => {
+        const p = e.payload;
+        setStatus(`Error: ${p.error}`);
+    });
+}
+
+// ---- Init ----
+loadAccount();
+</script>
+</body>
+</html>

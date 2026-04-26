@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
@@ -100,14 +101,14 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// Returns the configuration directory path: `~/.config/tidal-dl-ng/`
+    /// Returns the configuration directory path: `~/.config/tdl/`
     pub fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("tidal-dl-ng")
+            .join("tdl")
     }
 
-    /// Returns the full path to the settings file: `~/.config/tidal-dl-ng/settings.json`
+    /// Returns the full path to the settings file: `~/.config/tdl/settings.json`
     pub fn config_path() -> PathBuf {
         Self::config_dir().join("settings.json")
     }
@@ -115,19 +116,20 @@ impl Settings {
     /// Load settings from the JSON configuration file.
     ///
     /// If the file does not exist, returns default settings.
+    /// After loading, auto-detects FFmpeg if the path is not configured.
     pub fn load() -> Result<Self> {
         let path = Self::config_path();
 
-        if !path.exists() {
-            return Ok(Self::default());
-        }
+        let mut settings = if !path.exists() {
+            Self::default()
+        } else {
+            let contents = fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read settings from {}", path.display()))?;
+            serde_json::from_str(&contents)
+                .with_context(|| format!("Failed to parse settings from {}", path.display()))?
+        };
 
-        let contents = fs::read_to_string(&path)
-            .with_context(|| format!("Failed to read settings from {}", path.display()))?;
-
-        let settings: Settings = serde_json::from_str(&contents)
-            .with_context(|| format!("Failed to parse settings from {}", path.display()))?;
-
+        settings.resolve_ffmpeg();
         Ok(settings)
     }
 
@@ -150,6 +152,50 @@ impl Settings {
             .with_context(|| format!("Failed to write settings to {}", path.display()))?;
 
         Ok(())
+    }
+
+    /// Return the effective FFmpeg path: the configured path if set and exists,
+    /// otherwise the auto-detected path, or empty string if not found.
+    pub fn ffmpeg_path(&self) -> &str {
+        if !self.path_binary_ffmpeg.is_empty() {
+            return &self.path_binary_ffmpeg;
+        }
+        ""
+    }
+
+    /// Auto-detect FFmpeg if not already configured.
+    ///
+    /// Checks in order: configured path, system PATH (`which`), common install locations.
+    fn resolve_ffmpeg(&mut self) {
+        if !self.path_binary_ffmpeg.is_empty() && Path::new(&self.path_binary_ffmpeg).exists() {
+            return;
+        }
+
+        // Try system PATH via `which`
+        if let Ok(output) = Command::new("which").arg("ffmpeg").output() {
+            if output.status.success() {
+                let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !p.is_empty() && Path::new(&p).exists() {
+                    self.path_binary_ffmpeg = p;
+                    return;
+                }
+            }
+        }
+
+        // Try common locations
+        let candidates = [
+            "/opt/homebrew/bin/ffmpeg",   // macOS Homebrew (Apple Silicon)
+            "/usr/local/bin/ffmpeg",      // macOS Homebrew (Intel) / Linux
+            "/opt/local/bin/ffmpeg",      // macOS MacPorts
+            "/usr/bin/ffmpeg",            // Linux distro package
+            "/snap/bin/ffmpeg",           // Ubuntu Snap
+        ];
+        for candidate in &candidates {
+            if Path::new(candidate).exists() {
+                self.path_binary_ffmpeg = candidate.to_string();
+                return;
+            }
+        }
     }
 }
 
