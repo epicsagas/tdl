@@ -83,7 +83,7 @@ impl TidalRequest {
     /// response into `T`.
     ///
     /// Returns a descriptive error if the API responds with a non-success
-    /// status code (4xx other than 429, which is handled by retry).
+    /// status code or if the body cannot be decoded.
     pub async fn get<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -91,15 +91,23 @@ impl TidalRequest {
     ) -> Result<T> {
         let resp = self.get_v1(path, params).await?;
         let status = resp.status();
+        let body = resp.text().await.map_err(|e| {
+            anyhow!("API {path}: failed to read response body ({status}): {e}")
+        })?;
+
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
             return Err(anyhow!(
                 "API {path} returned {status}: {}",
                 body.chars().take(500).collect::<String>()
             ));
         }
-        let data: T = resp.json().await?;
-        Ok(data)
+
+        serde_json::from_str::<T>(&body).map_err(|e| {
+            anyhow!(
+                "API {path}: JSON parse failed: {e} — body: {}",
+                body.chars().take(300).collect::<String>()
+            )
+        })
     }
 
     /// Sends a GET request to the Tidal API V1 endpoint.
@@ -131,7 +139,8 @@ impl TidalRequest {
     }
 
     /// Sends a GET request to the Tidal API V2 endpoint, returning
-    /// deserialized JSON. Checks for non-success status codes.
+    /// deserialized JSON. Checks for non-success status codes and
+    /// shows the raw body on parse failure.
     pub async fn get_v2<T: DeserializeOwned>(
         &self,
         path: &str,
@@ -142,15 +151,23 @@ impl TidalRequest {
 
         let resp = self.send_with_retry(&url, &query).await?;
         let status = resp.status();
+        let body = resp.text().await.map_err(|e| {
+            anyhow!("API v2 {path}: failed to read response body ({status}): {e}")
+        })?;
+
         if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
             return Err(anyhow!(
                 "API v2 {path} returned {status}: {}",
                 body.chars().take(500).collect::<String>()
             ));
         }
-        let data: T = resp.json().await?;
-        Ok(data)
+
+        serde_json::from_str::<T>(&body).map_err(|e| {
+            anyhow!(
+                "API v2 {path}: JSON parse failed: {e} — body: {}",
+                body.chars().take(300).collect::<String>()
+            )
+        })
     }
 
     /// Sends a form-encoded POST request to the Tidal authentication endpoint.
