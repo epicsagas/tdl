@@ -308,15 +308,15 @@ pub struct Playlist {
     pub uuid: Option<String>,
     #[serde(default)]
     pub id: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "title")]
     pub name: Option<String>,
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
     pub duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "numberOfTracks")]
     pub num_tracks: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "numberOfVideos")]
     pub num_videos: Option<u32>,
     #[serde(default)]
     pub creator: Option<Creator>,
@@ -334,7 +334,9 @@ pub struct Playlist {
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Creator {
+    #[serde(default, deserialize_with = "deserialize_flexible_id")]
     pub id: u64,
+    #[serde(default)]
     pub name: String,
 }
 
