@@ -186,7 +186,9 @@ impl TryFrom<AlbumDeserialize> for Album {
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 pub struct Artist {
+    #[serde(default, deserialize_with = "deserialize_flexible_id")]
     pub id: u64,
+    #[serde(default)]
     pub name: String,
     #[serde(default)]
     pub role: Option<String>,
@@ -222,6 +224,7 @@ pub struct Album {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Track {
+    #[serde(default, deserialize_with = "deserialize_flexible_id")]
     pub id: u64,
     #[serde(default)]
     pub title: Option<String>,
@@ -274,6 +277,7 @@ pub struct Track {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Video {
+    #[serde(default, deserialize_with = "deserialize_flexible_id")]
     pub id: u64,
     #[serde(default)]
     pub title: Option<String>,
@@ -357,6 +361,7 @@ pub struct Mix {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     #[serde(default)]
     pub tracks: Option<PaginatedResponse<Track>>,
@@ -373,9 +378,10 @@ pub struct SearchResponse {
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PaginatedResponse<T> {
-    #[serde(default)]
-    pub total_num_rows: Option<u64>,
+    #[serde(default, alias = "totalNumRows")]
+    pub total_number_of_items: Option<u64>,
     #[serde(default = "Vec::new")]
     pub items: Vec<T>,
     #[serde(default)]

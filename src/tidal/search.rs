@@ -2,8 +2,8 @@ use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 
 use crate::tidal::media::{
-    Album, Artist, LyricsResponse, MediaType, PaginatedResponse, Playlist, SearchResponse, Track,
-    Video,
+    Album, Artist, LyricsResponse, MediaType, MixPageItem, PaginatedResponse, Playlist,
+    SearchResponse, Track, Video,
 };
 use crate::tidal::request::TidalRequest;
 
@@ -91,18 +91,22 @@ pub async fn get_album(request: &TidalRequest, album_id: u64) -> Result<Album> {
 }
 
 /// Fetch all tracks belonging to an album, automatically paginating.
+///
+/// The album items endpoint wraps each track in `{"item": {track}, "type": "track"}`.
 pub async fn get_album_tracks(request: &TidalRequest, album_id: u64) -> Result<Vec<Track>> {
     let path = format!("albums/{album_id}/items");
-    paginate_items::<Track>(request, &path).await
+    paginate_wrapped_items::<Track>(request, &path).await
 }
 
 /// Fetch all tracks belonging to a playlist, automatically paginating.
+///
+/// The playlist items endpoint wraps each track in `{"item": {track}, "type": "track"}`.
 pub async fn get_playlist_tracks(
     request: &TidalRequest,
     playlist_id: &str,
 ) -> Result<Vec<Track>> {
     let path = format!("playlists/{playlist_id}/items");
-    paginate_items::<Track>(request, &path).await
+    paginate_wrapped_items::<Track>(request, &path).await
 }
 
 /// Fetch albums by an artist.
@@ -245,8 +249,8 @@ pub fn parse_media_url(url: &str) -> Result<(MediaType, String)> {
 // Pagination helpers (private)
 // ---------------------------------------------------------------------------
 
-/// Paginate endpoints that return `PaginatedResponse<T>` (album items,
-/// playlist items, artist albums, user playlists, mix items).
+/// Paginate endpoints that return `PaginatedResponse<T>` (search results,
+/// artist albums, user playlists, favorites).
 ///
 /// The `TidalRequest::get` method (via `get_v1`) already injects a default
 /// `limit` of 10 000.  We still explicitly control pagination here so that
@@ -264,14 +268,52 @@ async fn paginate_items<T: serde::de::DeserializeOwned>(
         params.insert("limit".to_string(), limit.to_string());
         params.insert("offset".to_string(), offset.to_string());
 
-        // Note: get_v1 automatically injects sessionId, countryCode, and a
-        // default limit.  Our explicit limit/offset will override the default.
         let page: PaginatedResponse<T> = request.get(base_path, Some(params)).await?;
 
         let count = page.items.len();
         all_items.extend(page.items);
 
-        let total = page.total_num_rows.unwrap_or(0);
+        let total = page.total_number_of_items.unwrap_or(0);
+
+        if (count as u64) < limit || (total > 0 && all_items.len() as u64 >= total) {
+            break;
+        }
+
+        offset += limit;
+    }
+
+    Ok(all_items)
+}
+
+/// Paginate endpoints that wrap each item in `{"item": {...}, "type": "..."}`.
+///
+/// The album items and playlist items endpoints use this format.
+async fn paginate_wrapped_items<T: serde::de::DeserializeOwned>(
+    request: &TidalRequest,
+    base_path: &str,
+) -> Result<Vec<T>> {
+    let limit: u64 = 100;
+    let mut offset: u64 = 0;
+    let mut all_items: Vec<T> = Vec::new();
+
+    loop {
+        let mut params = HashMap::new();
+        params.insert("limit".to_string(), limit.to_string());
+        params.insert("offset".to_string(), offset.to_string());
+
+        let page: PaginatedResponse<MixPageItem> =
+            request.get(base_path, Some(params)).await?;
+
+        let count = page.items.len();
+        for wrapped in page.items {
+            if let Some(value) = wrapped.item {
+                if let Ok(item) = serde_json::from_value::<T>(value) {
+                    all_items.push(item);
+                }
+            }
+        }
+
+        let total = page.total_number_of_items.unwrap_or(0);
 
         if (count as u64) < limit || (total > 0 && all_items.len() as u64 >= total) {
             break;
