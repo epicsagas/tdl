@@ -33,7 +33,10 @@ pub struct Downloader {
 impl Downloader {
     /// Create a new downloader backed by the given shared session.
     pub fn new(session: Arc<Mutex<TidalSession>>, settings: Settings) -> Self {
-        let http_client = reqwest::Client::new();
+        let http_client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Linux; Android 12; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36")
+            .build()
+            .unwrap_or_default();
         Self {
             session,
             settings,
@@ -77,7 +80,7 @@ impl Downloader {
                         .download_collection(MediaType::Album, &album.id.to_string())
                         .await
                     {
-                        eprintln!(
+                        println!(
                             "Warning: failed to download album '{}' ({}): {e}",
                             album.name, album.id
                         );
@@ -151,6 +154,8 @@ impl Downloader {
             .join(relative)
             .with_extension(ext.trim_start_matches('.'));
 
+        println!("  Destination: {}", dest_path.display());
+
         // Ensure the parent directory exists.
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -204,13 +209,6 @@ impl Downloader {
         .await?;
 
         pb.finish_and_clear();
-
-        // Debug: check temp file
-        if let Ok(meta) = tokio::fs::metadata(&temp_path).await {
-            eprintln!("Debug: temp file size = {} bytes", meta.len());
-        } else {
-            eprintln!("Debug: temp file not found at {}", temp_path.display());
-        }
 
         // --- 6. Decrypt if encrypted ---------------------------------------
         if manifest.is_encrypted
@@ -272,13 +270,11 @@ impl Downloader {
             let meta = self.build_audio_metadata(&track);
             // Best-effort: do not fail the download if tagging fails.
             if let Err(e) = write_metadata(&working_path, &meta) {
-                eprintln!("Warning: failed to write metadata: {e}");
+                println!("Warning: failed to write metadata: {e}");
             }
         }
 
         // --- 10. Move to final destination ---------------------------------
-        eprintln!("Debug: working_path = {}", working_path.display());
-        eprintln!("Debug: final_path  = {}", final_path.display());
         if working_path != final_path {
             tokio::fs::rename(&working_path, &final_path)
                 .await
@@ -307,7 +303,7 @@ impl Downloader {
                     let cover_path = dir.join("cover.jpg");
                     if !cover_path.exists()
                         && let Err(e) = self.download_cover(&cover_url, dir).await {
-                            eprintln!("Warning: failed to download cover: {e}");
+                            println!("Warning: failed to download cover: {e}");
                         }
                 }
 
@@ -323,7 +319,7 @@ impl Downloader {
                 let lrc_path = dir.join(&lrc_name);
                 if !lrc_path.exists()
                     && let Err(e) = self.save_lyrics(track.id, dir).await {
-                        eprintln!("Warning: failed to save lyrics: {e}");
+                        println!("Warning: failed to save lyrics: {e}");
                     }
             }
 
@@ -459,7 +455,7 @@ impl Downloader {
                 .download_item(MediaType::Track, &track.id.to_string())
                 .await
             {
-                eprintln!(
+                println!(
                     "Warning: failed to download track {} ({}): {e}",
                     track.id,
                     track.title_display()
