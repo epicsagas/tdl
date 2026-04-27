@@ -166,4 +166,4 @@ Settings file: `~/.tdl/settings.json`
 
 ## License
 
-MIT
+[APACHE-2](LICENSE)
