@@ -167,6 +167,7 @@ pub fn run(current: &Settings) -> Result<Settings> {
         downloads_concurrent_max,
         symlink_to_track,
         metadata_replay_gain,
+        playlist_format: current.playlist_format.clone(),
     };
 
     // --- Confirm ---

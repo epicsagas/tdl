@@ -47,18 +47,6 @@ pub fn parse_m3u8(m3u8_content: &str) -> Result<Vec<String>> {
     }
 }
 
-/// Select the best resolution from a master M3U8 playlist's alternative media.
-#[allow(dead_code)]
-///
-/// Returns the URI of the alternative with the highest bandwidth, falling back
-/// to `None` when no alternatives carry a URI.
-fn select_best_resolution(variants: &[m3u8_rs::AlternativeMedia]) -> Option<String> {
-    // AlternativeMedia entries do not carry bandwidth information directly,
-    // but the convention is to pick the last-listed (typically highest-quality)
-    // entry that has a URI.
-    variants.iter().rev().find_map(|alt| alt.uri.clone())
-}
-
 /// Convert TS video to MP4 using FFmpeg.
 ///
 /// Runs: `ffmpeg -y -i <input> -codec copy -map 0 -loglevel quiet <output>`
@@ -219,32 +207,6 @@ mod tests {
         );
         let result = parse_m3u8(m3u8);
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn select_best_resolution_returns_last_with_uri() {
-        let variants = vec![
-            m3u8_rs::AlternativeMedia {
-                uri: Some("audio_128.m3u8".to_string()),
-                ..Default::default()
-            },
-            m3u8_rs::AlternativeMedia {
-                uri: Some("audio_320.m3u8".to_string()),
-                ..Default::default()
-            },
-        ];
-        let result = select_best_resolution(&variants);
-        assert_eq!(result, Some("audio_320.m3u8".to_string()));
-    }
-
-    #[test]
-    fn select_best_resolution_no_uri_returns_none() {
-        let variants = vec![m3u8_rs::AlternativeMedia {
-            uri: None,
-            ..Default::default()
-        }];
-        let result = select_best_resolution(&variants);
-        assert!(result.is_none());
     }
 
     #[test]

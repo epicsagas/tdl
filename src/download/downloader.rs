@@ -558,9 +558,13 @@ impl Downloader {
             }
         }
 
-        let m3u_path = dir.join(format!("{}.m3u8", crate::pathfmt::format::sanitize_filename(name)));
+        let ext = match self.settings.playlist_format {
+            crate::config::settings::PlaylistFormat::M3u8 => "m3u8",
+            crate::config::settings::PlaylistFormat::M3u => "m3u",
+        };
+        let m3u_path = dir.join(format!("{}.{ext}", crate::pathfmt::format::sanitize_filename(name)));
         if let Err(e) = tokio::fs::write(&m3u_path, m3u.as_bytes()).await {
-            println!("Warning: could not write m3u8: {e}");
+            println!("Warning: could not write playlist: {e}");
         } else {
             println!("Playlist: {}", m3u_path.display());
         }

@@ -1295,7 +1295,7 @@ const LOCALES = {
         'sf.embedCover':'Embed Cover','sf.coverFile':'Cover File',
         'sf.extractFlac':'Extract FLAC','sf.embedLyrics':'Embed Lyrics',
         'sf.lyricsFile':'Lyrics File','sf.replayGain':'ReplayGain',
-        'sf.createPlaylist':'Create Playlist','sf.trackPad':'Track Pad',
+        'sf.createPlaylist':'Create Playlist','sf.playlistFormat':'Playlist Format','sf.trackPad':'Track Pad',
     },
     ko: {
         _name: '한국어', _flag: '🇰🇷',
@@ -1345,7 +1345,7 @@ const LOCALES = {
         'sf.embedCover':'커버 삽입','sf.coverFile':'커버 파일 저장',
         'sf.extractFlac':'FLAC 추출','sf.embedLyrics':'가사 삽입',
         'sf.lyricsFile':'가사 파일 저장','sf.replayGain':'ReplayGain',
-        'sf.createPlaylist':'플레이리스트 생성','sf.trackPad':'트랙 번호 패딩',
+        'sf.createPlaylist':'플레이리스트 생성','sf.playlistFormat':'플레이리스트 형식','sf.trackPad':'트랙 번호 패딩',
     },
     de: {
         _name: 'Deutsch', _flag: '🇩🇪',
@@ -1683,6 +1683,7 @@ const settingsFields = [
     { key:'lyrics_file', lk:'sf.lyricsFile', type:'bool' },
     { key:'metadata_replay_gain', lk:'sf.replayGain', type:'bool' },
     { key:'playlist_folder', lk:'sf.createPlaylist', type:'bool' },
+    { key:'playlist_format', lk:'sf.playlistFormat', type:'enum', options:['m3u8','m3u'] },
     { key:'track_num_pad_zero', lk:'sf.trackPad', type:'bool' },
 ];
 

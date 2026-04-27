@@ -26,6 +26,14 @@ pub enum QualityVideo {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
+pub enum PlaylistFormat {
+    #[default]
+    M3u8,
+    M3u,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
 pub enum CoverDimensions {
     Px80,
     Px160,
@@ -47,6 +55,7 @@ pub struct Settings {
     pub quality_video: QualityVideo,
     pub track_num_pad_zero: bool,
     pub playlist_folder: bool,
+    pub playlist_format: PlaylistFormat,
     pub video_convert_mp4: bool,
     pub path_binary_ffmpeg: String,
     pub metadata_cover_dimension: CoverDimensions,
@@ -74,6 +83,7 @@ impl Default for Settings {
             quality_video: QualityVideo::default(),
             track_num_pad_zero: true,
             playlist_folder: true,
+            playlist_format: PlaylistFormat::default(),
             video_convert_mp4: true,
             path_binary_ffmpeg: String::new(),
             metadata_cover_dimension: CoverDimensions::default(),

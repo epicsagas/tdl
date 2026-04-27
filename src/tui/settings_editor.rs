@@ -14,7 +14,7 @@ use ratatui::{
 };
 use std::io;
 
-use crate::config::settings::{CoverDimensions, Quality, QualityVideo, Settings};
+use crate::config::settings::{CoverDimensions, PlaylistFormat, Quality, QualityVideo, Settings};
 
 // ---------------------------------------------------------------------------
 // Setting field descriptor
@@ -255,10 +255,28 @@ fn settings_fields() -> Vec<SettingField> {
         },
         SettingField {
             label: "Playlist Folder",
-            description: "Save playlists under Playlists/ folder and generate .m3u",
+            description: "Save playlists under Playlists/ folder and generate playlist file",
             kind: SettingKind::Bool,
             get: |s| s.playlist_folder.to_string(),
             set: |s, v| s.playlist_folder = v == "true",
+        },
+        SettingField {
+            label: "Playlist Format",
+            description: "Playlist file format: m3u8 (UTF-8, recommended) or m3u (Apple Music compatible)",
+            kind: SettingKind::Enum {
+                options: vec!["m3u8".into(), "m3u".into()],
+            },
+            get: |s| match s.playlist_format {
+                PlaylistFormat::M3u8 => "m3u8".to_string(),
+                PlaylistFormat::M3u => "m3u".to_string(),
+            },
+            set: |s, v| {
+                s.playlist_format = match v {
+                    "m3u8" => PlaylistFormat::M3u8,
+                    "m3u" => PlaylistFormat::M3u,
+                    _ => return,
+                };
+            },
         },
     ]
 }
