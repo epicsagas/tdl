@@ -302,11 +302,10 @@ impl Downloader {
                 tokio::fs::read(p).await.ok()
             } else {
                 let bytes = self.fetch_cover_bytes(&track).await;
-                if self.settings.cover_album_file {
-                    if let (Some(p), Some(b)) = (&cover_path, &bytes) {
+                if self.settings.cover_album_file
+                    && let (Some(p), Some(b)) = (&cover_path, &bytes) {
                         let _ = tokio::fs::write(p, b).await;
                     }
-                }
                 bytes
             }
         } else {
@@ -345,11 +344,10 @@ impl Downloader {
                 "{}.lrc",
                 final_path.file_stem().unwrap_or_default().to_string_lossy()
             ));
-            if !lrc_path.exists() {
-                if let Err(e) = tokio::fs::write(&lrc_path, text).await {
+            if !lrc_path.exists()
+                && let Err(e) = tokio::fs::write(&lrc_path, text).await {
                     println!("Warning: failed to save lyrics: {e}");
                 }
-            }
         }
 
         // --- 12. Apply download delay --------------------------------------
@@ -516,17 +514,15 @@ impl Downloader {
         }
 
         // Generate m3u playlist file when playlist_folder is enabled.
-        if self.settings.playlist_folder {
-            if let Some(folder_name) = &collection_display_name {
-                if matches!(media_type, MediaType::Playlist | MediaType::Mix) {
+        if self.settings.playlist_folder
+            && let Some(folder_name) = &collection_display_name
+                && matches!(media_type, MediaType::Playlist | MediaType::Mix) {
                     let base = expand_tilde(&self.settings.download_base_path);
                     let pl_dir = PathBuf::from(&base)
                         .join("Playlists")
                         .join(crate::pathfmt::format::sanitize_filename(folder_name));
                     self.write_m3u(&pl_dir, folder_name).await;
                 }
-            }
-        }
 
         Ok(())
     }

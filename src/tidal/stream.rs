@@ -421,11 +421,10 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                     b"SegmentURL" => {
                         if in_segment_list {
                             for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"media" {
-                                    if let Ok(v) = attr.unescape_value() {
+                                if attr.key.local_name().as_ref() == b"media"
+                                    && let Ok(v) = attr.unescape_value() {
                                         rep_segment_list.push(v.into_owned());
                                     }
-                                }
                             }
                         }
                     }
@@ -433,17 +432,16 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                 }
             }
             Ok(Event::Text(ref e)) => {
-                if in_base_url {
-                    if let Ok(decoded) = e.decode() {
+                if in_base_url
+                    && let Ok(decoded) = e.decode() {
                         let raw = decoded.as_ref();
                         let unescaped = quick_xml::escape::unescape(raw)
-                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(raw));
+                            .unwrap_or(std::borrow::Cow::Borrowed(raw));
                         let trimmed = unescaped.trim();
                         if !trimmed.is_empty() {
                             rep_base_url = Some(trimmed.to_string());
                         }
                     }
-                }
             }
             Ok(Event::End(ref e)) => {
                 let local_name_owned = e.name().local_name().as_ref().to_vec();
@@ -487,7 +485,7 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 if let Some(ref base) = rep_base_url {
                                     urls.push(base.clone());
                                 }
-                                urls.extend(rep_segment_list.drain(..));
+                                urls.append(&mut rep_segment_list);
                             } else if let Some(ref base) = rep_base_url {
                                 urls.push(base.clone());
                             }

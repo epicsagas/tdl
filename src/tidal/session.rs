@@ -141,13 +141,12 @@ impl TidalSession {
                 return Ok(());
             }
         }
-        if self.token.refresh_token.is_some() {
-            if self.refresh_token().await.is_ok() {
+        if self.token.refresh_token.is_some()
+            && self.refresh_token().await.is_ok() {
                 let session = self.validate_session().await?;
                 self.set_session_info(&session);
                 return Ok(());
             }
-        }
         self.device_auth_login(url_handler).await
     }
 

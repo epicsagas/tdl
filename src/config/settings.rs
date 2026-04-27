@@ -172,15 +172,14 @@ impl Settings {
         }
 
         // Try system PATH via `which`
-        if let Ok(output) = Command::new("which").arg("ffmpeg").output() {
-            if output.status.success() {
+        if let Ok(output) = Command::new("which").arg("ffmpeg").output()
+            && output.status.success() {
                 let p = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !p.is_empty() && Path::new(&p).exists() {
                     self.path_binary_ffmpeg = p;
                     return;
                 }
             }
-        }
 
         // Try common locations
         let candidates = [

@@ -313,11 +313,10 @@ async fn paginate_wrapped_items<T: serde::de::DeserializeOwned>(
 
         let count = page.items.len();
         for wrapped in page.items {
-            if let Some(value) = wrapped.item {
-                if let Ok(item) = serde_json::from_value::<T>(value) {
+            if let Some(value) = wrapped.item
+                && let Ok(item) = serde_json::from_value::<T>(value) {
                     all_items.push(item);
                 }
-            }
         }
 
         let total = page.total_number_of_items.unwrap_or(0);

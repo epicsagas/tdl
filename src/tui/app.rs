@@ -372,8 +372,8 @@ fn draw_settings(app: &mut App, frame: &mut Frame, area: Rect) {
 
     if app.settings_dropdown {
         let sel_idx = app.settings_state.selected().unwrap_or(0);
-        if let Some(field) = app.settings_fields.get(sel_idx) {
-            if let Some(options) = &field.options {
+        if let Some(field) = app.settings_fields.get(sel_idx)
+            && let Some(options) = &field.options {
                 let max_opt_len = options.iter().map(|o| o.len()).max().unwrap_or(10);
                 let popup_w = (max_opt_len as u16 + 6).max(22);
                 let popup_h = (options.len() as u16 + 2).min(area.height.saturating_sub(3));
@@ -408,7 +408,6 @@ fn draw_settings(app: &mut App, frame: &mut Frame, area: Rect) {
                 frame.render_widget(ratatui::widgets::Clear, popup);
                 frame.render_widget(list, popup);
             }
-        }
     }
 }
 
@@ -649,13 +648,11 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
                 if app.settings_dropdown_idx + 1 < opt_count { app.settings_dropdown_idx += 1; }
             }
             KeyCode::Enter => {
-                if let Some(field) = app.settings_fields.get(sel_idx) {
-                    if let Some(options) = &field.options {
-                        if let Some(&opt) = options.get(app.settings_dropdown_idx) {
+                if let Some(field) = app.settings_fields.get(sel_idx)
+                    && let Some(options) = &field.options
+                        && let Some(&opt) = options.get(app.settings_dropdown_idx) {
                             (field.set)(&mut app.settings, opt);
                         }
-                    }
-                }
                 app.settings_dropdown = false;
             }
             KeyCode::Esc => { app.settings_dropdown = false; }
@@ -809,9 +806,9 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
         let ev = event::read()?;
 
         // --- PKCE Enter handling (needs redirect_url before state changes) ---
-        if let Event::Key(k) = &ev {
-            if k.code == KeyCode::Enter {
-                if let PkceFlowState::AwaitingRedirect { input, verifier, unique_key, .. } = &app.pkce_state {
+        if let Event::Key(k) = &ev
+            && k.code == KeyCode::Enter
+                && let PkceFlowState::AwaitingRedirect { input, verifier, unique_key, .. } = &app.pkce_state {
                     let redirect_url = input.clone();
                     let verifier = verifier.clone();
                     let unique_key = unique_key.clone();
@@ -846,12 +843,10 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                     let _ = handle_event(&mut app, ev);
                     continue 'main;
                 }
-            }
-        }
 
         // --- Account action: OAuth login ---
-        if let Event::Key(k) = &ev {
-            if k.code == KeyCode::Enter
+        if let Event::Key(k) = &ev
+            && k.code == KeyCode::Enter
                 && app.screen == Screen::Account
                 && !app.logout_confirm
                 && !matches!(app.pkce_state, PkceFlowState::AwaitingRedirect { .. })
@@ -926,7 +921,6 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                     continue 'main;
                 }
             }
-        }
 
         // --- Download trigger ---
         let should_download = app.screen == Screen::Download
