@@ -80,6 +80,7 @@ async fn get_login_status() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
         "logged_in": token.is_valid(),
         "user_id": token.user_id,
+        "is_pkce": token.is_pkce,
     }))
 }
 

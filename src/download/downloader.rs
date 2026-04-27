@@ -558,9 +558,9 @@ impl Downloader {
             }
         }
 
-        let m3u_path = dir.join(format!("{}.m3u", crate::pathfmt::format::sanitize_filename(name)));
-        if let Err(e) = tokio::fs::write(&m3u_path, m3u).await {
-            println!("Warning: could not write m3u: {e}");
+        let m3u_path = dir.join(format!("{}.m3u8", crate::pathfmt::format::sanitize_filename(name)));
+        if let Err(e) = tokio::fs::write(&m3u_path, m3u.as_bytes()).await {
+            println!("Warning: could not write m3u8: {e}");
         } else {
             println!("Playlist: {}", m3u_path.display());
         }

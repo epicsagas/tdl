@@ -153,7 +153,8 @@ pub async fn run() -> Result<()> {
             match (key, value) {
                 // No args: launch interactive TUI settings editor.
                 (None, None) => {
-                    let _ = crate::tui::run_settings_editor(&settings)?;
+                    let is_pkce = Token::load().map(|t| t.is_pkce).unwrap_or(false);
+                    let _ = crate::tui::run_settings_editor(&settings, is_pkce)?;
                 }
                 // One arg: print that setting's value.
                 (Some(k), None) => {

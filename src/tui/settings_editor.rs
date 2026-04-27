@@ -276,10 +276,11 @@ struct App {
     enum_options: Vec<String>,
     enum_index: usize,
     status_message: String,
+    is_pkce: bool,
 }
 
 impl App {
-    fn new(settings: Settings) -> Self {
+    fn new(settings: Settings, is_pkce: bool) -> Self {
         let fields = settings_fields();
         let mut list_state = ListState::default();
         list_state.select(Some(0));
@@ -292,6 +293,7 @@ impl App {
             enum_options: Vec::new(),
             enum_index: 0,
             status_message: String::new(),
+            is_pkce,
         }
     }
 
@@ -325,6 +327,20 @@ impl App {
                 self.editing = true;
                 self.enum_options = options.clone();
                 self.enum_index = idx;
+                // HiRes 옵션 이름에 (PKCE only) 표시 추가
+                if field.label == "Quality Audio" {
+                    self.enum_options = options
+                        .iter()
+                        .map(|o| {
+                            if o == "hi_res_lossless" {
+                                format!("{} (PKCE only)", o)
+                            } else {
+                                o.clone()
+                            }
+                        })
+                        .collect();
+                    self.enum_index = idx;
+                }
             }
             SettingKind::Number | SettingKind::Text => {
                 self.editing = true;
@@ -349,9 +365,19 @@ impl App {
         match &field.kind {
             SettingKind::Enum { .. } => {
                 if let Some(opt) = self.enum_options.get(self.enum_index) {
+                    // HiRes는 PKCE 로그인 없이 선택 불가
+                    if opt.starts_with("hi_res_lossless") && !self.is_pkce {
+                        self.status_message =
+                            "HiRes Lossless requires PKCE login. Run: tdl login --pkce".to_string();
+                        self.editing = false;
+                        self.enum_options.clear();
+                        return;
+                    }
                     let label = field.label;
-                    (field.set)(&mut self.settings, opt);
-                    self.status_message = format!("{} = {}", label, opt);
+                    // enum_options에 "(PKCE only)" suffix가 붙어 있을 수 있으므로 원본 key만 추출
+                    let raw_opt = opt.split_once(' ').map(|(k, _)| k).unwrap_or(opt);
+                    (field.set)(&mut self.settings, raw_opt);
+                    self.status_message = format!("{} = {}", label, raw_opt);
                 }
             }
             _ => {
@@ -615,14 +641,14 @@ fn handle_event(app: &mut App, event: Event) -> bool {
 // Entry point
 // ---------------------------------------------------------------------------
 
-pub fn run_settings_editor(settings: &Settings) -> Result<Settings> {
+pub fn run_settings_editor(settings: &Settings, is_pkce: bool) -> Result<Settings> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(settings.clone());
+    let mut app = App::new(settings.clone(), is_pkce);
 
     loop {
         terminal.draw(|f| draw(&mut app, f))?;

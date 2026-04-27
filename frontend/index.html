@@ -1682,8 +1682,8 @@ const settingsFields = [
     { key:'lyrics_embed', lk:'sf.embedLyrics', type:'bool' },
     { key:'lyrics_file', lk:'sf.lyricsFile', type:'bool' },
     { key:'metadata_replay_gain', lk:'sf.replayGain', type:'bool' },
-    { key:'playlist_create', lk:'sf.createPlaylist', type:'bool' },
-    { key:'album_track_num_pad_min', lk:'sf.trackPad', type:'number' },
+    { key:'playlist_folder', lk:'sf.createPlaylist', type:'bool' },
+    { key:'track_num_pad_zero', lk:'sf.trackPad', type:'bool' },
 ];
 
 function updateQualityBadges(settings) {
@@ -1696,7 +1696,11 @@ function updateQualityBadges(settings) {
 }
 
 async function loadSettings() {
-    const settings = await invoke('get_settings');
+    const [settings, status] = await Promise.all([
+        invoke('get_settings'),
+        invoke('get_login_status').catch(() => ({ is_pkce: false })),
+    ]);
+    const isPkce = status.is_pkce === true;
     const body = document.getElementById('settings-body');
     body.innerHTML = '';
     updateQualityBadges(settings);
@@ -1710,7 +1714,15 @@ async function loadSettings() {
         if (f.type === 'bool') {
             val.innerHTML = `<label class="toggle"><input type="checkbox" data-key="${f.key}" ${settings[f.key]?'checked':''}><span class="slider"></span></label>`;
         } else if (f.type === 'enum') {
-            let opts = f.options.map(o => `<option value="${o}" ${settings[f.key]===o?'selected':''}>${o}</option>`).join('');
+            let opts = f.options.map(o => {
+                if (f.key === 'quality_audio' && o === 'hi_res_lossless') {
+                    const label = `${o} (PKCE only)`;
+                    const selected = settings[f.key] === o ? 'selected' : '';
+                    const disabled = isPkce ? '' : 'disabled';
+                    return `<option value="${o}" ${selected} ${disabled}>${label}</option>`;
+                }
+                return `<option value="${o}" ${settings[f.key]===o?'selected':''}>${o}</option>`;
+            }).join('');
             val.innerHTML = `<select data-key="${f.key}">${opts}</select>`;
         } else {
             val.innerHTML = `<input type="text" data-key="${f.key}" value="${settings[f.key] ?? ''}">`;
