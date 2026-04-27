@@ -629,6 +629,15 @@ let favAlbums = [];
 let playlistTracks = [];
 const queue = new Map();
 
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 // ---- Navigation ----
 document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -792,10 +801,10 @@ function addDlLog(name, status, error) {
     const header = document.getElementById('dl-header');
     const icon = status === 'completed' ? '&#10003;' : '&#10007;';
     const color = status === 'completed' ? 'var(--success)' : 'var(--error)';
-    const sub = error ? `<div class="dl-sub error-msg">${error}</div>` : '';
+    const sub = error ? `<div class="dl-sub error-msg">${esc(error)}</div>` : '';
     list.innerHTML = `<div class="dl-item">
         <div class="dl-icon" style="color:${color}">${icon}</div>
-        <div class="dl-info"><div class="dl-title">${name}</div>${sub}</div>
+        <div class="dl-info"><div class="dl-title">${esc(name)}</div>${sub}</div>
     </div>` + list.innerHTML;
     if (header) header.style.display = 'flex';
 }
@@ -821,7 +830,7 @@ async function doSearch() {
         lastSearchRes = res;
         renderSearchResults();
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Search failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Search failed: ${esc(e)}</div>`;
     }
 }
 
@@ -867,37 +876,60 @@ function renderTrackTable(tracks, areaId, opts = {}) {
         const qual = fmtQuality(t.audioQuality || t.audio_quality);
         const trkNum = t.trackNum ?? t.track_num;
         const volNum = t.volumeNum ?? t.volume_num;
-        const trk = trkNum != null ? `${trkNum}${volNum > 1 ? '·' + volNum : ''}` : '';
-        const isrc = t.isrc || '';
-        const safeArtist = artistName(t).replace(/'/g, "\\'");
-        const safeTitle = trackTitle(t).replace(/'/g, "\\'");
-        const safeAlbumName = (album.name || '').replace(/'/g, "\\'");
-
+        const trk = trkNum != null ? `${esc(trkNum)}${volNum > 1 ? '·' + esc(volNum) : ''}` : '';
+        const isrc = esc(t.isrc || '');
         const artistId = t.artists?.[0]?.id ?? t.artist?.id;
-        const artistCell = artistId
-            ? `<span class="nav-link" onclick="event.stopPropagation();browseArtist(${artistId},'${safeArtist}','${areaId}')">${artistName(t)}</span>`
-            : artistName(t);
-        const albumId = album.id;
-        const albumCell = albumId
-            ? `<span class="nav-link" onclick="event.stopPropagation();browseAlbumInArea(${albumId},'${safeAlbumName}','${areaId}')">${album.name || ''}</span>`
-            : (album.name || '');
+        const artistDisp = esc(artistName(t));
+        const albumDisp = esc(album.name || '');
+        const titleDisp = esc(trackTitle(t));
+        const trackUrl = `https://tidal.com/browse/track/${t.id}`;
+        const dlName = esc(artistName(t) + ' - ' + trackTitle(t));
 
-        html += `<tr data-id="${t.id}" data-url="https://tidal.com/browse/track/${t.id}" data-name="${safeArtist} - ${safeTitle}" onclick="rowClick(event,'${uid}',this)">
+        const artistCell = artistId
+            ? `<span class="nav-link" data-artist-id="${artistId}" data-area="${esc(areaId)}">${artistDisp}</span>`
+            : artistDisp;
+        const albumCell = album.id
+            ? `<span class="nav-link" data-album-id="${album.id}" data-area="${esc(areaId)}">${albumDisp}</span>`
+            : albumDisp;
+
+        html += `<tr data-id="${t.id}" data-url="${trackUrl}" data-name="${dlName}" onclick="rowClick(event,'${uid}',this)">
             <td class="col-chk" onclick="event.stopPropagation()"><input type="checkbox" class="${uid}-row-chk" onchange="onRowCheck('${uid}')" data-idx="${i}"></td>
             <td class="col-num">${i + 1}</td>
-            <td>${trackTitle(t)}</td>
+            <td>${titleDisp}</td>
             <td class="col-artist">${artistCell}</td>
             <td class="col-album">${albumCell}</td>
             <td class="col-trk">${trk}</td>
-            <td class="col-qual">${qual}</td>
+            <td class="col-qual">${esc(qual)}</td>
             <td class="col-isrc">${isrc}</td>
-            <td class="col-dur">${fmtDuration(t.duration)}</td>
-            <td class="col-act"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/track/${t.id}','${safeArtist} - ${safeTitle}')">DL</button></td>
+            <td class="col-dur">${esc(fmtDuration(t.duration))}</td>
+            <td class="col-act"><button class="dl-btn" data-url="${trackUrl}" data-name="${dlName}">DL</button></td>
         </tr>`;
     });
     html += '</tbody></table>';
     area.innerHTML = (area.innerHTML || '') + html;
     window[uid + '_tracks'] = tracks;
+
+    // Wire nav-link clicks via event delegation (avoids inline JS with user data)
+    const table = document.getElementById(`${uid}-table`);
+    if (table) {
+        table.addEventListener('click', e => {
+            const link = e.target.closest('.nav-link');
+            if (!link) return;
+            e.stopPropagation();
+            const aId = link.dataset.area;
+            if (link.dataset.artistId) {
+                browseArtist(Number(link.dataset.artistId), link.textContent, aId);
+            } else if (link.dataset.albumId) {
+                browseAlbumInArea(Number(link.dataset.albumId), link.textContent, aId);
+            }
+        });
+        table.querySelectorAll('.dl-btn').forEach(btn => {
+            btn.addEventListener('click', e => {
+                e.stopPropagation();
+                dlUrl(btn.dataset.url, btn.dataset.name);
+            });
+        });
+    }
 }
 
 function fmtQuality(q) {
@@ -1062,7 +1094,7 @@ async function browseAlbumInArea(albumId, name, areaId) {
         area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, backFn);
         renderTrackTable(tracks, areaId, { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1088,7 +1120,7 @@ async function browseArtist(artistId, name, areaId) {
         grid += '</div>';
         area.innerHTML += grid;
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1107,7 +1139,7 @@ async function browsePlaylist(plId, name) {
         area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'renderSearchResults()');
         renderTrackTable(tracks, 'search-results', { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1128,7 +1160,7 @@ async function loadFav(type) {
             renderFavAlbums(favAlbums);
         }
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1160,7 +1192,7 @@ async function browseFavAlbum(albumId, name) {
         area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'tracks\')');
         renderTrackTable(tracks, 'fav-results', { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1195,7 +1227,7 @@ async function loadPlaylists() {
         });
         area.innerHTML = html;
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 
@@ -1208,7 +1240,7 @@ async function browsePlTracks(plId, name) {
         area.innerHTML = area.innerHTML.replace('<div class="loading">Loading...</div>', '');
         renderTrackTable(tracks, 'pl-results', { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
     }
 }
 

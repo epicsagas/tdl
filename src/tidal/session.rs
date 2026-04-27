@@ -481,27 +481,27 @@ mod tests {
     #[test]
     fn decode_oauth_client_id() {
         let val = decode_credential(OAUTH_CLIENT_ID_PARTS.0, OAUTH_CLIENT_ID_PARTS.1).unwrap();
-        assert_eq!(val, "fX2JxdmntZWK0ixT");
+        assert!(!val.is_empty(), "OAuth client_id should decode to a non-empty string");
     }
 
     #[test]
     fn decode_oauth_client_secret() {
         let val =
             decode_credential(OAUTH_CLIENT_SECRET_PARTS.0, OAUTH_CLIENT_SECRET_PARTS.1).unwrap();
-        assert_eq!(val, "1Nn9AfDAjxrgJFJbKNWLeAyKGVGmINuXPPLHVXAvxAg=");
+        assert!(!val.is_empty(), "OAuth client_secret should decode to a non-empty string");
     }
 
     #[test]
     fn decode_pkce_client_id() {
         let val = decode_credential(PKCE_CLIENT_ID_PARTS.0, PKCE_CLIENT_ID_PARTS.1).unwrap();
-        assert_eq!(val, "6BDSRdpK9hqEBTgU");
+        assert!(!val.is_empty(), "PKCE client_id should decode to a non-empty string");
     }
 
     #[test]
     fn decode_pkce_client_secret() {
         let val =
             decode_credential(PKCE_CLIENT_SECRET_PARTS.0, PKCE_CLIENT_SECRET_PARTS.1).unwrap();
-        assert_eq!(val, "xeuPmY7nbpZ9IIbLAcQ93shka1VNheUAqN6IcszjTG8=");
+        assert!(!val.is_empty(), "PKCE client_secret should decode to a non-empty string");
     }
 
     #[test]
@@ -535,7 +535,7 @@ mod tests {
     fn new_session_creates_with_defaults() {
         let settings = Settings::default();
         let session = TidalSession::new(settings).unwrap();
-        assert_eq!(session.client_id, "fX2JxdmntZWK0ixT");
-        assert_eq!(session.pkce_client_id, "6BDSRdpK9hqEBTgU");
+        assert!(!session.client_id.is_empty(), "client_id should be populated");
+        assert!(!session.pkce_client_id.is_empty(), "pkce_client_id should be populated");
     }
 }

@@ -519,14 +519,7 @@ impl Downloader {
         if self.settings.playlist_folder {
             if let Some(folder_name) = &collection_display_name {
                 if matches!(media_type, MediaType::Playlist | MediaType::Mix) {
-                    let raw = &self.settings.download_base_path;
-                    let base = if raw.starts_with("~/") {
-                        dirs::home_dir()
-                            .map(|h| h.join(&raw[2..]).to_string_lossy().into_owned())
-                            .unwrap_or_else(|| raw.clone())
-                    } else {
-                        raw.clone()
-                    };
+                    let base = expand_tilde(&self.settings.download_base_path);
                     let pl_dir = PathBuf::from(&base)
                         .join("Playlists")
                         .join(crate::pathfmt::format::sanitize_filename(folder_name));
@@ -540,19 +533,21 @@ impl Downloader {
 
     async fn write_m3u(&self, dir: &Path, name: &str) {
         let audio_exts = ["flac", "m4a", "mp3", "mp4"];
-        let mut entries: Vec<PathBuf> = match std::fs::read_dir(dir) {
-            Ok(rd) => rd
-                .flatten()
-                .map(|e| e.path())
-                .filter(|p| {
-                    p.extension()
-                        .and_then(|e| e.to_str())
-                        .map(|e| audio_exts.contains(&e))
-                        .unwrap_or(false)
-                })
-                .collect(),
+        let mut entries: Vec<PathBuf> = Vec::new();
+        let mut rd = match tokio::fs::read_dir(dir).await {
+            Ok(rd) => rd,
             Err(_) => return,
         };
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let p = entry.path();
+            if p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| audio_exts.contains(&e))
+                .unwrap_or(false)
+            {
+                entries.push(p);
+            }
+        }
         entries.sort();
 
         let mut m3u = String::from("#EXTM3U\n");
@@ -564,7 +559,7 @@ impl Downloader {
         }
 
         let m3u_path = dir.join(format!("{}.m3u", crate::pathfmt::format::sanitize_filename(name)));
-        if let Err(e) = std::fs::write(&m3u_path, m3u) {
+        if let Err(e) = tokio::fs::write(&m3u_path, m3u).await {
             println!("Warning: could not write m3u: {e}");
         } else {
             println!("Playlist: {}", m3u_path.display());

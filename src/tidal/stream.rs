@@ -356,6 +356,8 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                 match local {
                     b"Representation" => {
                         // Self-closing <Representation .../> — inherits AdaptationSet template.
+                        // urls.is_empty() guard: Tidal manifests contain a single audio stream;
+                        // we take the first Representation and skip the rest.
                         if in_adaptation_set && urls.is_empty() {
                             let mut r_id = String::new();
                             for attr in e.attributes().flatten() {
@@ -458,6 +460,7 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                     b"Representation" => {
                         in_representation = false;
                         // Build URLs from this Representation if we haven't yet.
+                        // Tidal manifests have a single audio stream; first Representation wins.
                         if urls.is_empty() {
                             if let Some(ref tmpl) = rep_media_template {
                                 if !rep_timeline.is_empty() {
@@ -490,7 +493,10 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                             }
                         }
                     }
-                    b"SegmentTimeline" => in_segment_timeline = false,
+                    b"SegmentTimeline" => {
+                        in_segment_timeline = false;
+                        segment_timeline_in_adapt = false;
+                    }
                     b"SegmentList" => in_segment_list = false,
                     b"BaseURL" => in_base_url = false,
                     _ => {}

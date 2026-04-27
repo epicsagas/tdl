@@ -59,6 +59,7 @@ impl Screen {
 
 enum DownloadMsg {
     Log(String),
+    SessionReady(Arc<Mutex<TidalSession>>),
     Done,
 }
 
@@ -105,8 +106,14 @@ enum LogLevel {
 enum PkceFlowState {
     #[default]
     Idle,
-    // Waiting for user to paste redirect URL; store auth URL to display
-    AwaitingRedirect { auth_url: String, input: String, cursor: usize },
+    // Waiting for user to paste redirect URL; store verifier from the original auth URL.
+    AwaitingRedirect {
+        auth_url: String,
+        verifier: String,
+        unique_key: String,
+        input: String,
+        cursor: usize,
+    },
 }
 
 struct SettingsField {
@@ -763,23 +770,28 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
             if let Some(rx) = &app.download_rx {
                 loop {
                     match rx.try_recv() {
-                        Ok(msg @ DownloadMsg::Log(_)) => msgs.push(msg),
-                        Ok(DownloadMsg::Done) => { done = true; break; }
+                        Ok(msg) => msgs.push(msg),
                         Err(std::sync::mpsc::TryRecvError::Empty) => break,
                         Err(std::sync::mpsc::TryRecvError::Disconnected) => { done = true; break; }
                     }
                 }
             }
             for msg in msgs {
-                if let DownloadMsg::Log(text) = msg {
-                    let level = if text.starts_with("Error") || text.starts_with("Warning") {
-                        LogLevel::Error
-                    } else if text.starts_with("Saved") {
-                        LogLevel::Success
-                    } else {
-                        LogLevel::Info
-                    };
-                    app.log(text, level);
+                match msg {
+                    DownloadMsg::Log(text) => {
+                        let level = if text.starts_with("Error") || text.starts_with("Warning") {
+                            LogLevel::Error
+                        } else if text.starts_with("Saved") {
+                            LogLevel::Success
+                        } else {
+                            LogLevel::Info
+                        };
+                        app.log(text, level);
+                    }
+                    DownloadMsg::SessionReady(session) => {
+                        app.session = Some(session);
+                    }
+                    DownloadMsg::Done => { done = true; }
                 }
             }
             if done {
@@ -799,11 +811,12 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
         // --- PKCE Enter handling (needs redirect_url before state changes) ---
         if let Event::Key(k) = &ev {
             if k.code == KeyCode::Enter {
-                if let PkceFlowState::AwaitingRedirect { input, .. } = &app.pkce_state {
+                if let PkceFlowState::AwaitingRedirect { input, verifier, unique_key, .. } = &app.pkce_state {
                     let redirect_url = input.clone();
+                    let verifier = verifier.clone();
+                    let unique_key = unique_key.clone();
                     app.pkce_state = PkceFlowState::Idle;
 
-                    let session_slot = app.session.clone();
                     let (tx, rx) = std::sync::mpsc::channel::<DownloadMsg>();
                     app.downloading = true;
                     app.download_rx = Some(rx);
@@ -813,36 +826,18 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                     rt.spawn(async move {
                         let result: Result<Arc<Mutex<TidalSession>>, anyhow::Error> = async {
                             let settings = Settings::load()?;
-                            let session = if let Some(s) = session_slot {
-                                s
-                            } else {
-                                let s = TidalSession::new(settings.clone())?;
-                                Arc::new(Mutex::new(s))
-                            };
-                            {
-                                let mut sess = session.lock().await;
-                                // Re-build PKCE state from stored verifier — not available here.
-                                // Drop through to a fresh PKCE exchange using stored pkce state.
-                                // We need a fresh session for PKCE exchange since we don't persist verifier.
-                                let fresh_settings = Settings::load()?;
-                                let mut fresh = TidalSession::new(fresh_settings)?;
-                                // Build a new auth URL just to get a verifier; discard the URL.
-                                let (_, verifier, unique_key) = fresh.pkce_build_auth_url();
-                                // Exchange with the redirect URL the user pasted.
-                                fresh.pkce_exchange_code(&redirect_url, &verifier, &unique_key)
-                                    .await
-                                    .map_err(|e| anyhow::anyhow!("PKCE exchange failed: {e}"))?;
-                                // Copy the new token into the shared session.
-                                sess.token = fresh.token;
-                                let ttype = sess.token.token_type.clone().unwrap_or_default();
-                                let atoken = sess.token.access_token.clone().unwrap_or_default();
-                                sess.request.set_auth(ttype, atoken);
-                            }
-                            Ok(session)
+                            let mut sess = TidalSession::new(settings)?;
+                            sess.pkce_exchange_code(&redirect_url, &verifier, &unique_key)
+                                .await
+                                .map_err(|e| anyhow::anyhow!("PKCE exchange failed: {e}"))?;
+                            Ok(Arc::new(Mutex::new(sess)))
                         }.await;
 
                         match result {
-                            Ok(_) => { let _ = tx2.send(DownloadMsg::Log("PKCE login successful.".into())); }
+                            Ok(session) => {
+                                let _ = tx2.send(DownloadMsg::SessionReady(session));
+                                let _ = tx2.send(DownloadMsg::Log("PKCE login successful.".into()));
+                            }
                             Err(e) => { let _ = tx2.send(DownloadMsg::Log(format!("Error: PKCE login failed: {e}"))); }
                         }
                         let _ = tx2.send(DownloadMsg::Done);
@@ -893,7 +888,10 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                         }.await;
 
                         match result {
-                            Ok(_) => { let _ = tx2.send(DownloadMsg::Log("Login successful.".into())); }
+                            Ok(session) => {
+                                let _ = tx2.send(DownloadMsg::SessionReady(session));
+                                let _ = tx2.send(DownloadMsg::Log("Login successful.".into()));
+                            }
                             Err(e) => { let _ = tx2.send(DownloadMsg::Log(format!("Error: Login failed: {e}"))); }
                         }
                         let _ = tx2.send(DownloadMsg::Done);
@@ -904,18 +902,20 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                 }
 
                 if selected == 1 {
-                    // PKCE start — build URL and switch to redirect-input mode
-                    let result: Result<String> = (|| {
+                    // PKCE start — build URL and store verifier for later exchange
+                    let result: Result<(String, String, String)> = (|| {
                         let settings = Settings::load()?;
                         let sess = TidalSession::new(settings)?;
-                        let (auth_url, _verifier, _unique_key) = sess.pkce_build_auth_url();
-                        Ok(auth_url)
+                        let (auth_url, verifier, unique_key) = sess.pkce_build_auth_url();
+                        Ok((auth_url, verifier, unique_key))
                     })();
 
                     match result {
-                        Ok(auth_url) => {
+                        Ok((auth_url, verifier, unique_key)) => {
                             app.pkce_state = PkceFlowState::AwaitingRedirect {
                                 auth_url,
+                                verifier,
+                                unique_key,
                                 input: String::new(),
                                 cursor: 0,
                             };

@@ -66,6 +66,13 @@ impl Token {
         fs::write(&path, &json)
             .with_context(|| format!("Failed to write token to {}", path.display()))?;
 
+        // Restrict token file to owner-only read/write on Unix systems.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o600));
+        }
+
         Ok(())
     }
 
