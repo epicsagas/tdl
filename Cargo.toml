@@ -3,6 +3,9 @@ name = "tdl"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+repository = "https://github.com/epicsagas/tdl"
+homepage = "https://github.com/epicsagas/tools"
+authors = ["epicsagas"]
 
 [dependencies]
 reqwest = { version = "0.13", features = ["json", "stream", "form", "query", "gzip", "deflate", "brotli"] }
