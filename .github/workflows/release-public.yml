@@ -20,23 +20,36 @@ env:
 
 jobs:
   build:
-    name: Build (${{ matrix.os }})
+    name: Build (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            artifact_name: tdl-linux-x86_64
-            binary: tdl
           - os: macos-14
             target: aarch64-apple-darwin
-            artifact_name: tdl-macos-aarch64
-            binary: tdl
+            os_name: darwin
+            arch: arm64
+            ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            os_name: darwin
+            arch: amd64
+            ext: tar.gz
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            os_name: linux
+            arch: amd64
+            ext: tar.gz
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            os_name: linux
+            arch: arm64
+            ext: tar.gz
           - os: windows-2022
             target: x86_64-pc-windows-msvc
-            artifact_name: tdl-windows-x86_64
-            binary: tdl.exe
+            os_name: windows
+            arch: amd64
+            ext: zip
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -49,7 +62,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Linux GUI dependencies
-        if: matrix.os == 'ubuntu-24.04'
+        if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -59,21 +72,53 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Build (GUI)
-        run: cargo build --release --features gui --target ${{ matrix.target }}
-
-      - name: Package artifact
+      - name: Resolve version
+        id: version
         shell: bash
         run: |
-          mkdir -p release-artifacts
-          BIN="target/${{ matrix.target }}/release/${{ matrix.binary }}"
-          cp "$BIN" "release-artifacts/${{ matrix.artifact_name }}${{ matrix.os == 'windows-2022' && '.exe' || '' }}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          # Strip project prefix: tdl-v0.1.0 → 0.1.0, v0.1.0 → 0.1.0
+          VER="${TAG#tdl-v}"
+          VER="${VER#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "ver=${VER}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload build artifacts
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: matrix.ext == 'tar.gz'
+        shell: bash
+        run: |
+          ASSET="tdl_${{ steps.version.outputs.ver }}_${{ matrix.os_name }}_${{ matrix.arch }}"
+          mkdir -p "dist/${ASSET}"
+          cp "target/${{ matrix.target }}/release/tdl" "dist/${ASSET}/tdl"
+          cp LICENSE README.md "dist/${ASSET}/" 2>/dev/null || true
+          tar -czf "dist/${ASSET}.tar.gz" -C dist "${ASSET}"
+          echo "ASSET_PATH=dist/${ASSET}.tar.gz" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=${ASSET}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: matrix.ext == 'zip'
+        shell: bash
+        run: |
+          ASSET="tdl_${{ steps.version.outputs.ver }}_${{ matrix.os_name }}_${{ matrix.arch }}"
+          mkdir -p "dist/${ASSET}"
+          cp "target/${{ matrix.target }}/release/tdl.exe" "dist/${ASSET}/tdl.exe"
+          cp LICENSE README.md "dist/${ASSET}/" 2>/dev/null || true
+          cd dist && 7z a "${ASSET}.zip" "${ASSET}"
+          echo "ASSET_PATH=dist/${ASSET}.zip" >> "$GITHUB_ENV"
+          echo "ASSET_NAME=${ASSET}.zip" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact_name }}
-          path: release-artifacts
+          name: ${{ env.ASSET_NAME }}
+          path: ${{ env.ASSET_PATH }}
           if-no-files-found: error
 
   publish:
@@ -87,7 +132,6 @@ jobs:
       PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
     steps:
       - name: Validate required configuration
-        shell: bash
         run: |
           if [ -z "${PUBLIC_RELEASE_REPO}" ]; then
             echo "PUBLIC_RELEASE_REPO is not set (repo variable)."
@@ -102,10 +146,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: downloaded-artifacts
+          merge-multiple: true
 
       - name: Resolve tag
         id: tag
-        shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
@@ -114,20 +158,18 @@ jobs:
           fi
 
       - name: Create checksums
-        shell: bash
         run: |
           cd downloaded-artifacts
           find . -type f ! -name "SHA256SUMS.txt" -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
 
-      - name: Publish release assets to public repository
+      - name: Publish release to public repository
         env:
           GH_TOKEN: ${{ env.PUBLIC_RELEASE_TOKEN }}
           RELEASE_TAG: ${{ steps.tag.outputs.value }}
-        shell: bash
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" --repo "$PUBLIC_RELEASE_REPO" >/dev/null 2>&1; then
-            echo "Release exists in $PUBLIC_RELEASE_REPO: $RELEASE_TAG"
+            echo "Release $RELEASE_TAG already exists in $PUBLIC_RELEASE_REPO"
           else
             gh release create "$RELEASE_TAG" \
               --repo "$PUBLIC_RELEASE_REPO" \
