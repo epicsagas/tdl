@@ -87,15 +87,21 @@ pub async fn run() -> Result<()> {
     }
 
     match cli.command {
-        // No subcommand and no URLs → launch TUI on a separate thread
-        // so Handle::block_on doesn't panic inside the tokio runtime.
+        // No subcommand and no URLs → launch GUI if available, otherwise TUI
         None => {
-            let settings = Settings::load()?;
-            let rt = tokio::runtime::Handle::current();
-            std::thread::scope(|s| {
-                s.spawn(|| crate::tui::run_tui_with_rt(&settings, rt)).join().unwrap()?;
-                Ok::<(), anyhow::Error>(())
-            })?;
+            #[cfg(feature = "gui")]
+            {
+                run_gui();
+            }
+            #[cfg(not(feature = "gui"))]
+            {
+                let settings = Settings::load()?;
+                let rt = tokio::runtime::Handle::current();
+                std::thread::scope(|s| {
+                    s.spawn(|| crate::tui::run_tui_with_rt(&settings, rt)).join().unwrap()?;
+                    Ok::<(), anyhow::Error>(())
+                })?;
+            }
         }
 
         // ---------------------------------------------------------------
