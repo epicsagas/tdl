@@ -44,6 +44,7 @@ pub enum CoverDimensions {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Settings {
     pub skip_existing: bool,
     pub lyrics_embed: bool,
