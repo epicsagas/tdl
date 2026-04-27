@@ -1,0 +1,135 @@
+name: Release Public Binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "tdl-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release to public repository (e.g. v0.1.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            artifact_name: tdl-linux-x86_64
+          - os: macos-14
+            artifact_name: tdl-macos-aarch64
+          - os: windows-2022
+            artifact_name: tdl-windows-x86_64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-dist
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-dist@0.31.0
+
+      - name: Build dist artifacts
+        run: cargo dist build --artifacts=local --output-format=json
+
+      - name: Collect artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+          if [ -d dist ]; then
+            cp -R dist/* release-artifacts/
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release-artifacts
+          if-no-files-found: error
+
+  publish:
+    name: Publish to Public Repo
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      # Set in repo variables, example: epicsagas/tdl-binaries
+      PUBLIC_RELEASE_REPO: epicsagas/tools
+      # Set in repo secrets: PAT with write access to PUBLIC_RELEASE_REPO
+      PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
+    steps:
+      - name: Validate required configuration
+        shell: bash
+        run: |
+          if [ -z "${PUBLIC_RELEASE_REPO}" ]; then
+            echo "PUBLIC_RELEASE_REPO is not set (repo variable)."
+            exit 1
+          fi
+          if [ -z "${PUBLIC_RELEASE_TOKEN}" ]; then
+            echo "PUBLIC_RELEASE_TOKEN is not set (repo secret)."
+            exit 1
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded-artifacts
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd downloaded-artifacts
+          find . -type f ! -name "SHA256SUMS.txt" -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
+
+      - name: Publish release assets to public repository
+        env:
+          GH_TOKEN: ${{ env.PUBLIC_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.value }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$PUBLIC_RELEASE_REPO" >/dev/null 2>&1; then
+            echo "Release exists in $PUBLIC_RELEASE_REPO: $RELEASE_TAG"
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$PUBLIC_RELEASE_REPO" \
+              --title "$RELEASE_TAG" \
+              --notes "Automated binary release from private source repository."
+          fi
+
+          mapfile -t FILES < <(find downloaded-artifacts -type f | sort)
+          if [ "${#FILES[@]}" -eq 0 ]; then
+            echo "No files found to upload."
+            exit 1
+          fi
+
+          gh release upload "$RELEASE_TAG" "${FILES[@]}" \
+            --repo "$PUBLIC_RELEASE_REPO" \
+            --clobber
