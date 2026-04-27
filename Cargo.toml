@@ -37,7 +37,7 @@ ratatui = "0.30"
 crossterm = "0.29"
 
 [build-dependencies]
-tauri-build = { version = "2", optional = true }
+tauri-build = { version = "2", optional = true , features = [] }
 
 [dependencies.tauri]
 version = "2"
