@@ -150,6 +150,9 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .queue-item.completed .q-fill { background:var(--success); width:100%!important; }
 .queue-item.error .q-fill { background:var(--error); }
 .queue-item .q-status { font-size:11px; color:var(--text2); margin-top:3px; }
+.queue-item.cancelled .q-fill { background:var(--text2); width:100%!important; }
+.q-cancel { background:none; border:none; color:var(--text2); cursor:pointer; font-size:13px; padding:0 2px; line-height:1; float:right; }
+.q-cancel:hover { color:var(--error); }
 
 /* Status bar */
 #statusbar {
@@ -711,7 +714,7 @@ function updateQueue(id, status, progress) {
     const item = queue.get(id);
     if (!item) return;
     item.status = status;
-    if (progress) item.progress = progress;
+    if (progress !== undefined) item.progress = progress;
     renderQueue();
 }
 function renderQueue() {
@@ -723,11 +726,18 @@ function renderQueue() {
     const hasFinished = [...queue.values()].some(i => i.status !== 'downloading');
     if (clearBtn) clearBtn.style.display = hasFinished ? '' : 'none';
     for (const [id, item] of queue) {
-        const pct = item.status === 'completed' ? 100 : item.status === 'error' ? 100 : 0;
+        const done = item.status !== 'downloading';
+        const pct = done ? 100 : 0;
+        const cancelBtn = !done
+            ? `<button class="q-cancel" title="Cancel" onclick="cancelDownload('${id}')">&#10005;</button>`
+            : '';
+        const statusText = item.status === 'downloading'
+            ? (item.progress || 'Downloading...')
+            : item.status;
         list.innerHTML += `<div class="queue-item ${item.status}">
-            <div class="q-name">${item.name}</div>
+            <div class="q-name">${cancelBtn}${item.name}</div>
             <div class="q-bar"><div class="q-fill" style="width:${pct}%"></div></div>
-            <div class="q-status">${item.status === 'downloading' ? item.progress || 'Downloading...' : item.status}</div>
+            <div class="q-status">${statusText}</div>
         </div>`;
     }
 }
@@ -737,6 +747,14 @@ function clearQueue() {
         if (item.status !== 'downloading') queue.delete(id);
     }
     renderQueue();
+}
+
+async function cancelDownload(queueId) {
+    try {
+        await invoke('cancel_download', { queueId });
+    } catch (e) {
+        console.error('cancel_download error', e);
+    }
 }
 
 // ---- Download ----
@@ -754,10 +772,14 @@ async function dlUrl(url, name) {
     const qid = addToQueue(url, displayName);
 
     try {
-        await invoke('download_url', { url });
-        updateQueue(qid, 'completed');
+        await invoke('download_url', { url, queueId: qid });
+        // status already updated via events; only update if still downloading
+        const item = queue.get(qid);
+        if (item && item.status === 'downloading') {
+            updateQueue(qid, 'completed');
+            addDlLog(displayName, 'completed');
+        }
         setStatus('Done: ' + displayName);
-        addDlLog(displayName, 'completed');
     } catch (e) {
         updateQueue(qid, 'error');
         setStatus('Error: ' + e);
@@ -1817,14 +1839,30 @@ if (listen) {
     });
     listen('download-progress', e => {
         const p = e.payload;
-        setStatus(`[${p.current}/${p.total}] ${p.track}`);
+        const prog = `[${p.current}/${p.total}] ${p.track}`;
+        setStatus(prog);
+        if (p.queueId) updateQueue(p.queueId, 'downloading', prog);
     });
     listen('download-complete', e => {
+        const p = e.payload;
         setStatus('Download complete');
+        if (p.queueId) {
+            updateQueue(p.queueId, 'completed');
+            const item = queue.get(p.queueId);
+            if (item) addDlLog(item.name, 'completed');
+        }
+    });
+    listen('download-cancelled', e => {
+        const p = e.payload;
+        if (p.queueId) {
+            updateQueue(p.queueId, 'cancelled');
+            setStatus('Cancelled');
+        }
     });
     listen('download-error', e => {
         const p = e.payload;
         setStatus(`Error: ${p.error}`);
+        if (p.queueId) updateQueue(p.queueId, 'error', p.error);
     });
 }
 

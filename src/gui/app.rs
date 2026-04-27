@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::process::Command;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 use tauri::{Emitter, State};
 
 use crate::config::settings::Settings;
@@ -19,6 +21,8 @@ struct PkceState {
 pub struct AppState {
     pub session: Arc<Mutex<Option<Arc<Mutex<TidalSession>>>>>,
     pkce: Arc<Mutex<Option<PkceState>>>,
+    /// Maps queue-id (string timestamp from JS) to a cancellation token.
+    cancel_tokens: Arc<Mutex<HashMap<String, CancellationToken>>>,
 }
 
 async fn ensure_session(
@@ -285,29 +289,74 @@ async fn download_url(
     state: State<'_, AppState>,
     app_handle: tauri::AppHandle,
     url: String,
+    queue_id: String,
 ) -> Result<(), String> {
-    let session = ensure_session(&state).await?;
+    let token = CancellationToken::new();
+    {
+        let mut tokens = state.cancel_tokens.lock().await;
+        tokens.insert(queue_id.clone(), token.clone());
+    }
+
+    let result = do_download(&state, &app_handle, &url, &queue_id, &token).await;
+
+    {
+        let mut tokens = state.cancel_tokens.lock().await;
+        tokens.remove(&queue_id);
+    }
+
+    result
+}
+
+#[tauri::command]
+async fn cancel_download(state: State<'_, AppState>, queue_id: String) -> Result<(), String> {
+    let tokens = state.cancel_tokens.lock().await;
+    if let Some(token) = tokens.get(&queue_id) {
+        token.cancel();
+    }
+    Ok(())
+}
+
+async fn do_download(
+    state: &State<'_, AppState>,
+    app_handle: &tauri::AppHandle,
+    url: &str,
+    queue_id: &str,
+    cancel: &CancellationToken,
+) -> Result<(), String> {
+    let session = ensure_session(state).await?;
     let settings = Settings::load().map_err(|e| e.to_string())?;
     let downloader = Downloader::new(Arc::clone(&session), settings);
-    let (media_type, id) = search::parse_media_url(&url).map_err(|e| e.to_string())?;
+    let (media_type, id) = search::parse_media_url(url).map_err(|e| e.to_string())?;
+
+    macro_rules! cancelled {
+        () => {
+            if cancel.is_cancelled() {
+                app_handle
+                    .emit("download-cancelled", serde_json::json!({"url": url, "queueId": queue_id}))
+                    .ok();
+                return Ok(());
+            }
+        };
+    }
 
     match media_type {
         MediaType::Track | MediaType::Video => {
+            cancelled!();
             app_handle
-                .emit("download-start", serde_json::json!({"url": url}))
+                .emit("download-start", serde_json::json!({"url": url, "queueId": queue_id}))
                 .ok();
             let result = downloader.download_item(media_type, &id).await;
             match result {
                 Ok(()) => {
                     app_handle
-                        .emit("download-complete", serde_json::json!({"url": url}))
+                        .emit("download-complete", serde_json::json!({"url": url, "queueId": queue_id}))
                         .ok();
                 }
                 Err(e) => {
                     app_handle
                         .emit(
                             "download-error",
-                            serde_json::json!({"url": url, "error": e.to_string()}),
+                            serde_json::json!({"url": url, "queueId": queue_id, "error": e.to_string()}),
                         )
                         .ok();
                     return Err(e.to_string());
@@ -336,17 +385,19 @@ async fn download_url(
             app_handle
                 .emit(
                     "download-start",
-                    serde_json::json!({"url": url, "total": total}),
+                    serde_json::json!({"url": url, "queueId": queue_id, "total": total}),
                 )
                 .ok();
 
             for (i, track) in tracks.iter().enumerate() {
+                cancelled!();
                 let title = track.title_display();
                 app_handle
                     .emit(
                         "download-progress",
                         serde_json::json!({
                             "url": url,
+                            "queueId": queue_id,
                             "current": i + 1,
                             "total": total,
                             "track": title,
@@ -361,15 +412,21 @@ async fn download_url(
                     app_handle
                         .emit(
                             "download-error",
-                            serde_json::json!({"url": url, "track": title, "error": e.to_string()}),
+                            serde_json::json!({"url": url, "queueId": queue_id, "track": title, "error": e.to_string()}),
                         )
                         .ok();
                 }
             }
 
-            app_handle
-                .emit("download-complete", serde_json::json!({"url": url}))
-                .ok();
+            if !cancel.is_cancelled() {
+                app_handle
+                    .emit("download-complete", serde_json::json!({"url": url, "queueId": queue_id}))
+                    .ok();
+            } else {
+                app_handle
+                    .emit("download-cancelled", serde_json::json!({"url": url, "queueId": queue_id}))
+                    .ok();
+            }
         }
         MediaType::Artist => {
             let albums = {
@@ -384,16 +441,18 @@ async fn download_url(
             app_handle
                 .emit(
                     "download-start",
-                    serde_json::json!({"url": url, "total": albums.len()}),
+                    serde_json::json!({"url": url, "queueId": queue_id, "total": albums.len()}),
                 )
                 .ok();
 
             for (i, album) in albums.iter().enumerate() {
+                cancelled!();
                 app_handle
                     .emit(
                         "download-progress",
                         serde_json::json!({
                             "url": url,
+                            "queueId": queue_id,
                             "current": i + 1,
                             "total": albums.len(),
                             "track": album.name.clone(),
@@ -410,6 +469,7 @@ async fn download_url(
                             "download-error",
                             serde_json::json!({
                                 "url": url,
+                                "queueId": queue_id,
                                 "track": album.name.clone(),
                                 "error": e.to_string(),
                             }),
@@ -418,9 +478,15 @@ async fn download_url(
                 }
             }
 
-            app_handle
-                .emit("download-complete", serde_json::json!({"url": url}))
-                .ok();
+            if !cancel.is_cancelled() {
+                app_handle
+                    .emit("download-complete", serde_json::json!({"url": url, "queueId": queue_id}))
+                    .ok();
+            } else {
+                app_handle
+                    .emit("download-cancelled", serde_json::json!({"url": url, "queueId": queue_id}))
+                    .ok();
+            }
         }
     }
 
@@ -436,6 +502,7 @@ pub fn run_gui() {
         .manage(AppState {
             session: Arc::new(Mutex::new(None)),
             pkce: Arc::new(Mutex::new(None)),
+            cancel_tokens: Arc::new(Mutex::new(HashMap::new())),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -454,6 +521,7 @@ pub fn run_gui() {
             get_mix_items,
             get_artist_albums,
             download_url,
+            cancel_download,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
