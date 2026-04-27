@@ -196,10 +196,15 @@ jobs:
         id: tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            TAG="${{ inputs.tag }}"
           else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            TAG="${GITHUB_REF_NAME}"
           fi
+          # Normalize: v0.1.0 → tdl-v0.1.0
+          if [[ "$TAG" =~ ^v ]]; then
+            TAG="tdl-${TAG}"
+          fi
+          echo "value=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Create checksums
         run: |
@@ -253,8 +258,11 @@ jobs:
           else
             TAG="${GITHUB_REF_NAME}"
           fi
+          # Normalize: v0.1.0 → tdl-v0.1.0
+          if [[ "$TAG" =~ ^v ]]; then
+            TAG="tdl-${TAG}"
+          fi
           VER="${TAG#tdl-v}"
-          VER="${VER#v}"
           echo "ver=${VER}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
