@@ -205,3 +205,4 @@ $RECYCLE.BIN/
 
 *.local.json
 ./*.png
+.cargo/
