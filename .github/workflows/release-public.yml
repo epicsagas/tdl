@@ -268,42 +268,49 @@ jobs:
           SHA_LINUX_ARM: ${{ steps.sha.outputs.linux_arm }}
           SHA_LINUX_AMD: ${{ steps.sha.outputs.linux_amd }}
         run: |
-          cat > Formula/tdl.rb << RUBY
-          class Tdl < Formula
-            desc "Tidal music downloader — tracks, albums, playlists, mixes, and videos"
-            homepage "https://github.com/epicsagas/tools"
-            version "${VER}"
-            license "Apache-2.0"
+          python3 - <<'PY'
+import os, textwrap
+ver = os.environ["VER"]
+tag = os.environ["TAG"]
+formula = textwrap.dedent(f"""
+  class Tdl < Formula
+    desc "Tidal music downloader -- tracks, albums, playlists, mixes, and videos"
+    homepage "https://github.com/epicsagas/tools"
+    version "{ver}"
+    license "Apache-2.0"
 
-            on_macos do
-              if Hardware::CPU.arm?
-                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_darwin_arm64.tar.gz"
-                sha256 "${SHA_DARWIN_ARM}"
-              else
-                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_darwin_amd64.tar.gz"
-                sha256 "${SHA_DARWIN_AMD}"
-              end
-            end
+    on_macos do
+      if Hardware::CPU.arm?
+        url "https://github.com/epicsagas/tools/releases/download/{tag}/tdl_{ver}_darwin_arm64.tar.gz"
+        sha256 "{os.environ['SHA_DARWIN_ARM']}"
+      else
+        url "https://github.com/epicsagas/tools/releases/download/{tag}/tdl_{ver}_darwin_amd64.tar.gz"
+        sha256 "{os.environ['SHA_DARWIN_AMD']}"
+      end
+    end
 
-            on_linux do
-              if Hardware::CPU.arm?
-                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_linux_arm64.tar.gz"
-                sha256 "${SHA_LINUX_ARM}"
-              else
-                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_linux_amd64.tar.gz"
-                sha256 "${SHA_LINUX_AMD}"
-              end
-            end
+    on_linux do
+      if Hardware::CPU.arm?
+        url "https://github.com/epicsagas/tools/releases/download/{tag}/tdl_{ver}_linux_arm64.tar.gz"
+        sha256 "{os.environ['SHA_LINUX_ARM']}"
+      else
+        url "https://github.com/epicsagas/tools/releases/download/{tag}/tdl_{ver}_linux_amd64.tar.gz"
+        sha256 "{os.environ['SHA_LINUX_AMD']}"
+      end
+    end
 
-            def install
-              bin.install "tdl"
-            end
+    def install
+      bin.install "tdl"
+    end
 
-            test do
-              assert_match "tdl", shell_output("#{bin}/tdl --version 2>&1")
-            end
-          end
-          RUBY
+    test do
+      assert_match "tdl", shell_output("\#{bin}/tdl --version 2>&1")
+    end
+  end
+""").lstrip()
+with open("Formula/tdl.rb", "w") as f:
+    f.write(formula)
+PY
 
       - name: Commit and push
         run: |
