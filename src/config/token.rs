@@ -18,11 +18,11 @@ pub struct Token {
 }
 
 impl Token {
-    /// Returns the full path to the token file: `~/.config/tdl/token.json`
+    /// Returns the full path to the token file: `~/.tdl/token.json`
     pub fn config_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("tdl")
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("~"))
+            .join(".tdl")
             .join("token.json")
     }
 

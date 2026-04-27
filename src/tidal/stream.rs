@@ -194,6 +194,7 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
 
     let mut reader = Reader::from_reader(data);
 
+    // Final outputs — populated when the first complete Representation is closed.
     let mut urls: Vec<String> = Vec::new();
     let mut codecs: Option<String> = None;
     let mut mime_type: Option<String> = None;
@@ -201,34 +202,80 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
     let encryption_key: Option<String> = None;
     let mut sample_rate: Option<u32> = None;
 
-    // State machine for XML walking
+    // State machine
     let mut in_period = false;
     let mut in_adaptation_set = false;
     let mut in_representation = false;
     let mut in_segment_timeline = false;
+    let mut segment_timeline_in_adapt = false;
 
-    // SegmentTemplate fields
-    let mut init_url: Option<String> = None;
-    let mut media_template: Option<String> = None;
-    let mut start_number: u64 = 1;
+    // AdaptationSet-level SegmentTemplate (inherited by each Representation)
+    let mut adapt_init_url: Option<String> = None;
+    let mut adapt_media_template: Option<String> = None;
+    let mut adapt_start_number: u64 = 1;
+    let mut adapt_timeline: Vec<(u64, u64)> = Vec::new();
 
-    // SegmentTimeline entries
-    let mut timeline_segments: Vec<(u64, u64)> = Vec::new(); // (duration, repeat_count)
-
-    // BaseURL approach
-    let mut base_url: Option<String> = None;
-    let mut segment_list_media: Vec<String> = Vec::new();
+    // Current Representation state (reset on each <Representation>)
+    let mut rep_id = String::new();
+    let mut rep_init_url: Option<String> = None;
+    let mut rep_media_template: Option<String> = None;
+    let mut rep_start_number: u64 = 1;
+    let mut rep_timeline: Vec<(u64, u64)> = Vec::new();
+    let mut rep_base_url: Option<String> = None;
+    let mut rep_segment_list: Vec<String> = Vec::new();
     let mut in_segment_list = false;
     let mut in_base_url = false;
 
     let mut buf = Vec::new();
 
+    // Helper: parse SegmentTemplate attributes into (init, media, start_number).
+    // Uses unescape_value() so XML entities like &amp; are decoded to &.
+    fn read_segment_template_attrs(e: &quick_xml::events::BytesStart) -> (Option<String>, Option<String>, Option<u64>) {
+        let mut init = None;
+        let mut media = None;
+        let mut start = None;
+        for attr in e.attributes().flatten() {
+            let unescaped = attr.unescape_value().ok().map(|v| v.into_owned());
+            match attr.key.local_name().as_ref() {
+                b"initialization" => init = unescaped,
+                b"media" => media = unescaped,
+                b"startNumber" => {
+                    start = unescaped.as_deref().and_then(|s| s.parse().ok());
+                }
+                _ => {}
+            }
+        }
+        (init, media, start)
+    }
+
+    // Helper: parse one <S> element into (duration, repeat).
+    fn read_s_attrs(e: &quick_xml::events::BytesStart) -> (u64, u64) {
+        let mut d = 0u64;
+        let mut r = 0u64;
+        for attr in e.attributes().flatten() {
+            match attr.key.local_name().as_ref() {
+                b"d" => { if let Ok(s) = std::str::from_utf8(&attr.value) { d = s.parse().unwrap_or(0); } }
+                b"r" => { if let Ok(s) = std::str::from_utf8(&attr.value) { r = s.parse().unwrap_or(0); } }
+                _ => {}
+            }
+        }
+        (d, r)
+    }
+
+    // Expand $RepresentationID$ and $Number$ in a template string.
+    let expand_tmpl = |tmpl: &str, rep: &str, num: u64| -> String {
+        tmpl.replace("$RepresentationID$", rep)
+            .replace("$Number$", &num.to_string())
+    };
+    let expand_static = |s: &str, rep: &str| -> String {
+        s.replace("$RepresentationID$", rep)
+    };
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) => {
-                let local_name = e.name().local_name();
-                let local: &[u8] = local_name.as_ref();
-
+                let local_name_owned = e.name().local_name().as_ref().to_vec();
+                let local: &[u8] = &local_name_owned;
                 match local {
                     b"Period" => in_period = true,
                     b"AdaptationSet" => {
@@ -239,20 +286,19 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                     b"Representation" => {
                         if in_adaptation_set {
                             in_representation = true;
+                            // Inherit AdaptationSet defaults.
+                            rep_init_url = adapt_init_url.clone();
+                            rep_media_template = adapt_media_template.clone();
+                            rep_start_number = adapt_start_number;
+                            rep_timeline = adapt_timeline.clone();
+                            rep_id.clear();
+                            rep_base_url = None;
+                            rep_segment_list.clear();
                             for attr in e.attributes().flatten() {
                                 match attr.key.local_name().as_ref() {
-                                    b"codecs" => {
-                                        codecs = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
-                                    b"mimeType" => {
-                                        mime_type = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
+                                    b"id" => rep_id = String::from_utf8(attr.value.to_vec()).unwrap_or_default(),
+                                    b"codecs" => codecs = Some(String::from_utf8(attr.value.to_vec()).unwrap_or_default()),
+                                    b"mimeType" => mime_type = Some(String::from_utf8(attr.value.to_vec()).unwrap_or_default()),
                                     b"audioSamplingRate" => {
                                         if let Ok(s) = std::str::from_utf8(&attr.value) {
                                             sample_rate = s.parse().ok();
@@ -264,131 +310,119 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                         }
                     }
                     b"SegmentTemplate" => {
+                        let (init, media, start) = read_segment_template_attrs(e);
                         if in_representation {
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"initialization" => {
-                                        init_url = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
-                                    b"media" => {
-                                        media_template = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
-                                    b"startNumber" => {
-                                        if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            start_number = s.parse().unwrap_or(1);
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            if let Some(v) = init { rep_init_url = Some(v); }
+                            if let Some(v) = media { rep_media_template = Some(v); }
+                            if let Some(n) = start { rep_start_number = n; }
+                        } else if in_adaptation_set {
+                            if let Some(v) = init { adapt_init_url = Some(v); }
+                            if let Some(v) = media { adapt_media_template = Some(v); }
+                            if let Some(n) = start { adapt_start_number = n; }
                         }
                     }
                     b"SegmentTimeline" => {
-                        if in_representation {
+                        if in_representation || in_adaptation_set {
                             in_segment_timeline = true;
+                            segment_timeline_in_adapt = !in_representation;
+                            // Clear Representation-level timeline when starting a new one inside it.
+                            if in_representation {
+                                rep_timeline.clear();
+                            }
                         }
                     }
                     b"S" => {
                         if in_segment_timeline {
-                            let mut duration: u64 = 0;
-                            let mut repeat: u64 = 0;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"d" => {
-                                        if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            duration = s.parse().unwrap_or(0);
-                                        }
-                                    }
-                                    b"r" => {
-                                        if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            repeat = s.parse().unwrap_or(0);
-                                        }
-                                    }
-                                    _ => {}
-                                }
+                            let (d, r) = read_s_attrs(e);
+                            if segment_timeline_in_adapt {
+                                adapt_timeline.push((d, r));
+                            } else {
+                                rep_timeline.push((d, r));
                             }
-                            timeline_segments.push((duration, repeat));
                         }
                     }
                     b"BaseURL" => {
-                        if in_representation {
-                            in_base_url = true;
-                        }
+                        if in_representation { in_base_url = true; }
                     }
                     b"SegmentList" => {
-                        if in_representation {
-                            in_segment_list = true;
-                        }
+                        if in_representation { in_segment_list = true; }
                     }
                     _ => {}
                 }
             }
             Ok(Event::Empty(ref e)) => {
-                let local_name = e.name().local_name();
-                let local: &[u8] = local_name.as_ref();
-
+                let local_name_owned = e.name().local_name().as_ref().to_vec();
+                let local: &[u8] = &local_name_owned;
                 match local {
-                    b"SegmentTemplate" => {
-                        if in_representation {
+                    b"Representation" => {
+                        // Self-closing <Representation .../> — inherits AdaptationSet template.
+                        if in_adaptation_set && urls.is_empty() {
+                            let mut r_id = String::new();
                             for attr in e.attributes().flatten() {
                                 match attr.key.local_name().as_ref() {
-                                    b"initialization" => {
-                                        init_url = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
-                                    b"media" => {
-                                        media_template = Some(
-                                            String::from_utf8(attr.value.to_vec())
-                                                .unwrap_or_default(),
-                                        );
-                                    }
-                                    b"startNumber" => {
+                                    b"id" => r_id = String::from_utf8(attr.value.to_vec()).unwrap_or_default(),
+                                    b"codecs" => codecs = Some(String::from_utf8(attr.value.to_vec()).unwrap_or_default()),
+                                    b"mimeType" => mime_type = Some(String::from_utf8(attr.value.to_vec()).unwrap_or_default()),
+                                    b"audioSamplingRate" => {
                                         if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            start_number = s.parse().unwrap_or(1);
+                                            sample_rate = s.parse().ok();
                                         }
                                     }
                                     _ => {}
+                                }
+                            }
+                            if let Some(ref tmpl) = adapt_media_template {
+                                if !adapt_timeline.is_empty() {
+                                    if let Some(ref init) = adapt_init_url {
+                                        urls.push(expand_static(init, &r_id));
+                                    }
+                                    let mut seg_num = adapt_start_number;
+                                    for (_d, r) in &adapt_timeline {
+                                        for _ in 0..=*r {
+                                            urls.push(expand_tmpl(tmpl, &r_id, seg_num));
+                                            seg_num += 1;
+                                        }
+                                    }
+                                } else {
+                                    if let Some(ref init) = adapt_init_url {
+                                        urls.push(expand_static(init, &r_id));
+                                    }
+                                    for i in adapt_start_number..(adapt_start_number + 200) {
+                                        urls.push(expand_tmpl(tmpl, &r_id, i));
+                                    }
                                 }
                             }
                         }
                     }
+                    b"SegmentTemplate" => {
+                        let (init, media, start) = read_segment_template_attrs(e);
+                        if in_representation {
+                            if let Some(v) = init { rep_init_url = Some(v); }
+                            if let Some(v) = media { rep_media_template = Some(v); }
+                            if let Some(n) = start { rep_start_number = n; }
+                        } else if in_adaptation_set {
+                            if let Some(v) = init { adapt_init_url = Some(v); }
+                            if let Some(v) = media { adapt_media_template = Some(v); }
+                            if let Some(n) = start { adapt_start_number = n; }
+                        }
+                    }
                     b"S" => {
                         if in_segment_timeline {
-                            let mut duration: u64 = 0;
-                            let mut repeat: u64 = 0;
-                            for attr in e.attributes().flatten() {
-                                match attr.key.local_name().as_ref() {
-                                    b"d" => {
-                                        if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            duration = s.parse().unwrap_or(0);
-                                        }
-                                    }
-                                    b"r" => {
-                                        if let Ok(s) = std::str::from_utf8(&attr.value) {
-                                            repeat = s.parse().unwrap_or(0);
-                                        }
-                                    }
-                                    _ => {}
-                                }
+                            let (d, r) = read_s_attrs(e);
+                            if segment_timeline_in_adapt {
+                                adapt_timeline.push((d, r));
+                            } else {
+                                rep_timeline.push((d, r));
                             }
-                            timeline_segments.push((duration, repeat));
                         }
                     }
                     b"SegmentURL" => {
                         if in_segment_list {
                             for attr in e.attributes().flatten() {
                                 if attr.key.local_name().as_ref() == b"media" {
-                                    segment_list_media.push(
-                                        String::from_utf8(attr.value.to_vec()).unwrap_or_default(),
-                                    );
+                                    if let Ok(v) = attr.unescape_value() {
+                                        rep_segment_list.push(v.into_owned());
+                                    }
                                 }
                             }
                         }
@@ -398,21 +432,64 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
             }
             Ok(Event::Text(ref e)) => {
                 if in_base_url {
-                    let text = e.as_ref();
-                    let trimmed = std::str::from_utf8(text).unwrap_or("").trim();
-                    if !trimmed.is_empty() && base_url.is_none() {
-                        base_url = Some(trimmed.to_string());
+                    if let Ok(decoded) = e.decode() {
+                        let raw = decoded.as_ref();
+                        let unescaped = quick_xml::escape::unescape(raw)
+                            .unwrap_or_else(|_| std::borrow::Cow::Borrowed(raw));
+                        let trimmed = unescaped.trim();
+                        if !trimmed.is_empty() {
+                            rep_base_url = Some(trimmed.to_string());
+                        }
                     }
                 }
             }
             Ok(Event::End(ref e)) => {
-                let local_name = e.name().local_name();
-                let local: &[u8] = local_name.as_ref();
-
+                let local_name_owned = e.name().local_name().as_ref().to_vec();
+                let local: &[u8] = &local_name_owned;
                 match local {
                     b"Period" => in_period = false,
-                    b"AdaptationSet" => in_adaptation_set = false,
-                    b"Representation" => in_representation = false,
+                    b"AdaptationSet" => {
+                        in_adaptation_set = false;
+                        adapt_init_url = None;
+                        adapt_media_template = None;
+                        adapt_start_number = 1;
+                        adapt_timeline.clear();
+                    }
+                    b"Representation" => {
+                        in_representation = false;
+                        // Build URLs from this Representation if we haven't yet.
+                        if urls.is_empty() {
+                            if let Some(ref tmpl) = rep_media_template {
+                                if !rep_timeline.is_empty() {
+                                    if let Some(ref init) = rep_init_url {
+                                        urls.push(expand_static(init, &rep_id));
+                                    }
+                                    let mut seg_num = rep_start_number;
+                                    for (_d, r) in &rep_timeline {
+                                        for _ in 0..=*r {
+                                            urls.push(expand_tmpl(tmpl, &rep_id, seg_num));
+                                            seg_num += 1;
+                                        }
+                                    }
+                                } else {
+                                    // No timeline — generate up to 200 segments.
+                                    if let Some(ref init) = rep_init_url {
+                                        urls.push(expand_static(init, &rep_id));
+                                    }
+                                    for i in rep_start_number..(rep_start_number + 200) {
+                                        urls.push(expand_tmpl(tmpl, &rep_id, i));
+                                    }
+                                }
+                            } else if !rep_segment_list.is_empty() {
+                                if let Some(ref base) = rep_base_url {
+                                    urls.push(base.clone());
+                                }
+                                urls.extend(rep_segment_list.drain(..));
+                            } else if let Some(ref base) = rep_base_url {
+                                urls.push(base.clone());
+                            }
+                        }
+                    }
                     b"SegmentTimeline" => in_segment_timeline = false,
                     b"SegmentList" => in_segment_list = false,
                     b"BaseURL" => in_base_url = false,
@@ -426,46 +503,6 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
             _ => {}
         }
         buf.clear();
-    }
-
-    // Build the URL list.
-    // Strategy 1: SegmentTemplate with SegmentTimeline
-    if let Some(ref tmpl) = media_template {
-        if !timeline_segments.is_empty() {
-            // Prepend initialization segment.
-            if let Some(ref init) = init_url {
-                urls.push(init.clone());
-            }
-            let mut seg_num = start_number;
-            for (_duration, repeat) in &timeline_segments {
-                let count = (*repeat + 1) as usize;
-                for _ in 0..count {
-                    urls.push(tmpl.replace("$Number$", &seg_num.to_string()));
-                    seg_num += 1;
-                }
-            }
-        } else {
-            // SegmentTemplate without timeline: try to generate a reasonable
-            // number of segments.  A typical track is ~5 min with ~6 sec
-            // segments ≈ 50.  Use 200 as a generous upper bound.
-            if let Some(ref init) = init_url {
-                urls.push(init.clone());
-            }
-            for i in start_number..(start_number + 200) {
-                urls.push(tmpl.replace("$Number$", &i.to_string()));
-            }
-        }
-    }
-    // Strategy 2: BaseURL + SegmentList
-    else if !segment_list_media.is_empty() {
-        if let Some(ref base) = base_url {
-            urls.push(base.clone());
-        }
-        urls.extend(segment_list_media);
-    }
-    // Strategy 3: BaseURL only
-    else if let Some(ref base) = base_url {
-        urls.push(base.clone());
     }
 
     if urls.is_empty() {
@@ -603,6 +640,53 @@ mod tests {
         assert_eq!(manifest.urls[0], "https://cdn.example.com/base/");
         assert_eq!(manifest.urls[1], "seg1.ts");
         assert_eq!(manifest.urls[2], "seg2.ts");
+    }
+
+    #[test]
+    fn parse_mpd_representation_id_substitution() {
+        let xml = r#"<?xml version="1.0"?>
+        <MPD>
+            <Period>
+                <AdaptationSet>
+                    <Representation id="audio_flac" codecs="flac" mimeType="audio/flac">
+                        <SegmentTemplate initialization="$RepresentationID$/init.mp4" media="$RepresentationID$/seg$Number$.m4s" startNumber="1">
+                            <SegmentTimeline>
+                                <S d="1000" r="1"/>
+                            </SegmentTimeline>
+                        </SegmentTemplate>
+                    </Representation>
+                </AdaptationSet>
+            </Period>
+        </MPD>"#;
+        let manifest = parse_mpd(xml.as_bytes()).unwrap();
+        // init + 2 segments (r=1 means 2 total)
+        assert_eq!(manifest.urls.len(), 3);
+        assert_eq!(manifest.urls[0], "audio_flac/init.mp4");
+        assert_eq!(manifest.urls[1], "audio_flac/seg1.m4s");
+        assert_eq!(manifest.urls[2], "audio_flac/seg2.m4s");
+    }
+
+    #[test]
+    fn parse_mpd_adaptation_set_level_segment_template() {
+        // SegmentTemplate at AdaptationSet level (common Tidal DASH pattern)
+        let xml = r#"<?xml version="1.0"?>
+        <MPD>
+            <Period>
+                <AdaptationSet>
+                    <SegmentTemplate initialization="$RepresentationID$/init.mp4" media="$RepresentationID$/seg$Number$.m4s" startNumber="1">
+                        <SegmentTimeline>
+                            <S d="500" r="0"/>
+                        </SegmentTimeline>
+                    </SegmentTemplate>
+                    <Representation id="rep_aac" codecs="mp4a.40.2" mimeType="audio/mp4"/>
+                </AdaptationSet>
+            </Period>
+        </MPD>"#;
+        let manifest = parse_mpd(xml.as_bytes()).unwrap();
+        // init + 1 segment
+        assert_eq!(manifest.urls.len(), 2);
+        assert_eq!(manifest.urls[0], "rep_aac/init.mp4");
+        assert_eq!(manifest.urls[1], "rep_aac/seg1.m4s");
     }
 
     #[test]

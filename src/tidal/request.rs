@@ -200,6 +200,17 @@ impl TidalRequest {
             .map_err(|e| anyhow!("Raw GET request failed for {url}: {e}"))
     }
 
+    /// Sends a GET request to an arbitrary URL with session auth headers and
+    /// countryCode query param attached. Used for authenticated CDN resources
+    /// such as cover art.
+    pub async fn get_v1_raw(&self, url: &str) -> Result<Response> {
+        let mut query = HashMap::new();
+        if let Some(ref cc) = self.country_code {
+            query.insert("countryCode".to_string(), cc.clone());
+        }
+        self.send_with_retry(url, &query).await
+    }
+
     // -- Internal helpers -----------------------------------------------------
 
     /// Executes a GET request with exponential-back-off retry logic.

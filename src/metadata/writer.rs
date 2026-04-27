@@ -137,12 +137,13 @@ fn populate_tag(tag: &mut Tag, meta: &AudioMetadata, _tag_type: TagType) {
 
     // Cover art
     if let Some(ref cover_data) = meta.cover_data {
-        // Remove existing front cover pictures to avoid duplicates.
         tag.remove_picture_type(PictureType::CoverFront);
-
-        let _mime = cover_mime(cover_data);
-        let pic = Picture::unchecked(cover_data.clone()).build();
-        tag.push_picture(pic);
+        let mut builder = Picture::unchecked(cover_data.clone())
+            .pic_type(PictureType::CoverFront);
+        if let Some(mime) = cover_mime(cover_data) {
+            builder = builder.mime_type(mime);
+        }
+        tag.push_picture(builder.build());
     }
 
     // Replay gain (only written when explicitly requested)

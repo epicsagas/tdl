@@ -151,15 +151,11 @@ fn settings_fields() -> Vec<SettingField> {
             set: |s, v| s.path_binary_ffmpeg = v.to_string(),
         },
         SettingField {
-            label: "Track Num Padding",
-            description: "Min track number width (1=no pad, 2=01, 3=001)",
-            kind: SettingKind::Number,
-            get: |s| s.album_track_num_pad_min.to_string(),
-            set: |s, v| {
-                if let Ok(val) = v.parse::<u32>() {
-                    s.album_track_num_pad_min = val.clamp(1, 4);
-                }
-            },
+            label: "Track Num Zero Pad",
+            description: "Zero-pad track numbers (e.g. 01, 02)",
+            kind: SettingKind::Bool,
+            get: |s| s.track_num_pad_zero.to_string(),
+            set: |s, v| s.track_num_pad_zero = v == "true",
         },
         // --- Video ---
         SettingField {
@@ -258,11 +254,11 @@ fn settings_fields() -> Vec<SettingField> {
             set: |s, v| s.symlink_to_track = v == "true",
         },
         SettingField {
-            label: "Playlist Create",
-            description: "Create .m3u playlist files",
+            label: "Playlist Folder",
+            description: "Save playlists under Playlists/ folder and generate .m3u",
             kind: SettingKind::Bool,
-            get: |s| s.playlist_create.to_string(),
-            set: |s, v| s.playlist_create = v == "true",
+            get: |s| s.playlist_folder.to_string(),
+            set: |s, v| s.playlist_folder = v == "true",
         },
     ]
 }

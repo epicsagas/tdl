@@ -18,6 +18,58 @@
     --error: #ff4757;
     --warn: #ffa502;
 }
+/* ── Themes ────────────────────────────────────────────────── */
+[data-theme="dark"] {
+    --bg:#1a1a2e; --bg2:#16213e; --bg3:#0f3460;
+    --accent:#00d2ff; --accent2:#0099cc;
+    --text:#e0e0e0; --text2:#8892b0; --border:#233554;
+}
+[data-theme="light"] {
+    --bg:#f5f7fa; --bg2:#ffffff; --bg3:#e8ecf4;
+    --accent:#0077cc; --accent2:#005fa3;
+    --text:#1a1a2e; --text2:#5a6a8a; --border:#d0d8e8;
+    --success:#1a9e5c; --error:#cc2233; --warn:#cc7700;
+}
+[data-theme="amoled"] {
+    --bg:#000000; --bg2:#0a0a0a; --bg3:#111111;
+    --accent:#00ff88; --accent2:#00cc66;
+    --text:#f0f0f0; --text2:#777777; --border:#1a1a1a;
+}
+[data-theme="nord"] {
+    --bg:#2e3440; --bg2:#3b4252; --bg3:#434c5e;
+    --accent:#88c0d0; --accent2:#5e81ac;
+    --text:#eceff4; --text2:#d8dee9; --border:#4c566a;
+}
+[data-theme="dracula"] {
+    --bg:#282a36; --bg2:#1e1f29; --bg3:#44475a;
+    --accent:#bd93f9; --accent2:#6272a4;
+    --text:#f8f8f2; --text2:#6272a4; --border:#44475a;
+}
+[data-theme="solarized"] {
+    --bg:#002b36; --bg2:#073642; --bg3:#0d4a5a;
+    --accent:#2aa198; --accent2:#268bd2;
+    --text:#839496; --text2:#586e75; --border:#073642;
+}
+[data-theme="monokai"] {
+    --bg:#272822; --bg2:#1e1f1c; --bg3:#3e3d32;
+    --accent:#a6e22e; --accent2:#66d9e8;
+    --text:#f8f8f2; --text2:#75715e; --border:#3e3d32;
+}
+[data-theme="rose"] {
+    --bg:#191724; --bg2:#1f1d2e; --bg3:#26233a;
+    --accent:#ebbcba; --accent2:#eb6f92;
+    --text:#e0def4; --text2:#908caa; --border:#403d52;
+}
+[data-theme="gruvbox"] {
+    --bg:#282828; --bg2:#1d2021; --bg3:#3c3836;
+    --accent:#b8bb26; --accent2:#fabd2f;
+    --text:#ebdbb2; --text2:#a89984; --border:#504945;
+}
+[data-theme="tokyo"] {
+    --bg:#1a1b26; --bg2:#16161e; --bg3:#24283b;
+    --accent:#7aa2f7; --accent2:#bb9af7;
+    --text:#c0caf5; --text2:#565f89; --border:#292e42;
+}
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; height:100vh; }
 
@@ -71,13 +123,21 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 }
 #cover-area img { max-width:200px; max-height:200px; border-radius:6px; box-shadow:0 4px 12px rgba(0,0,0,.4); }
 #cover-area .placeholder { color:var(--text2); font-size:13px; }
-#cover-area .cover-title { margin-top:10px; font-size:13px; font-weight:600; color:var(--text); }
-#cover-area .cover-artist { font-size:12px; color:var(--text2); }
+#cover-area .cover-title { margin-top:10px; font-size:13px; font-weight:600; color:var(--text); line-height:1.4; }
+#cover-area .cover-artist { font-size:12px; color:var(--accent); margin-top:2px; }
+#cover-area .cover-meta { font-size:11px; color:var(--text2); margin-top:3px; }
+#cover-area .cover-isrc { font-size:10px; color:var(--text2); margin-top:4px; font-family:monospace; opacity:.7; }
 #queue-area { flex:1; display:flex; flex-direction:column; overflow:hidden; }
 #queue-area h3 {
-    padding:12px 16px 8px; font-size:13px; color:var(--text2);
+    padding:8px 12px 8px 16px; font-size:13px; color:var(--text2);
     text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:6px;
 }
+.btn-ghost {
+    background:none; border:1px solid var(--border); color:var(--text2);
+    padding:2px 8px; font-size:11px; border-radius:3px; cursor:pointer;
+}
+.btn-ghost:hover { border-color:var(--accent); color:var(--accent); }
 #queue-list { flex:1; overflow-y:auto; }
 .queue-item {
     padding:8px 16px; border-bottom:1px solid var(--border);
@@ -99,6 +159,14 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 }
 #statusbar .dot { width:6px; height:6px; border-radius:50%; background:var(--success); }
 #statusbar .dot.off { background:var(--error); }
+#statusbar .sb-qual {
+    margin-left:auto; display:flex; gap:8px; align-items:center;
+}
+.sb-badge {
+    padding:1px 7px; border-radius:10px; font-size:10px; font-weight:600;
+    background:var(--bg3); color:var(--accent); border:1px solid var(--border);
+    letter-spacing:.4px;
+}
 
 /* --- Download page --- */
 .dl-input-row { display:flex; gap:8px; flex:1; }
@@ -144,37 +212,73 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 /* Track table */
 .track-table { width:100%; border-collapse:collapse; }
 .track-table th {
-    padding:8px 16px; text-align:left; font-size:11px;
+    padding:8px 12px; text-align:left; font-size:11px;
     text-transform:uppercase; color:var(--text2); border-bottom:1px solid var(--border);
-    position:sticky; top:0; background:var(--bg); z-index:1; font-weight:600;
+    position:sticky; top:var(--thead-top, 0px); background:var(--bg); z-index:1; font-weight:600;
+    white-space:nowrap;
 }
-.track-table td { padding:7px 16px; font-size:13px; border-bottom:1px solid rgba(35,53,84,.5); }
-.track-table tr:hover td { background:rgba(0,210,255,.04); }
-.track-table tr.selected td { background:rgba(0,210,255,.1); }
-.track-table .col-num { width:40px; color:var(--text2); }
-.track-table .col-dur { width:60px; color:var(--text2); text-align:right; }
-.track-table .col-artist { color:var(--text2); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.track-table .col-album { color:var(--text2); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.track-table td { padding:6px 12px; font-size:12px; border-bottom:1px solid rgba(35,53,84,.5); }
+.track-table tr:hover td { background:rgba(0,210,255,.04); cursor:pointer; }
+.track-table tr.selected td { background:rgba(0,210,255,.12); }
+.track-table .col-chk { width:32px; text-align:center; }
+.track-table .col-chk input[type=checkbox] { cursor:pointer; accent-color:var(--accent); }
+.track-table .col-num { width:36px; color:var(--text2); font-size:11px; }
+.track-table .col-dur { width:52px; color:var(--text2); text-align:right; font-variant-numeric:tabular-nums; }
+.track-table .col-qual { width:80px; color:var(--text2); font-size:11px; }
+.track-table .col-trk { width:50px; color:var(--text2); font-size:11px; text-align:center; }
+.track-table .col-artist { color:var(--text2); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.track-table .col-album { color:var(--text2); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+.track-table .col-isrc { color:var(--text2); font-size:10px; font-family:monospace; white-space:nowrap; }
+.track-table .col-act { width:36px; text-align:center; }
 .dl-btn {
-    padding:3px 10px; background:none; border:1px solid var(--accent2);
+    padding:3px 8px; background:none; border:1px solid var(--accent2);
     color:var(--accent); border-radius:3px; cursor:pointer; font-size:11px;
 }
 .dl-btn:hover { background:var(--accent2); color:#fff; }
+.nav-link { cursor:pointer; }
+.nav-link:hover { color:var(--accent); text-decoration:underline; }
+
+/* Multi-select toolbar */
+.sel-toolbar {
+    display:none; align-items:center; gap:10px;
+    padding:8px 16px; background:rgba(0,210,255,.08);
+    border-bottom:1px solid var(--border); font-size:12px;
+    position:sticky; top:0; z-index:10;
+}
+.sel-toolbar.visible { display:flex; }
+.sel-count { color:var(--accent); font-weight:600; }
 
 /* Album grid */
 .album-grid {
-    display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+    display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr));
     gap:16px; padding:16px 24px;
 }
 .album-card {
     background:var(--bg2); border-radius:8px; overflow:hidden; cursor:pointer;
     transition:transform .15s, box-shadow .15s; border:1px solid var(--border);
+    position:relative;
 }
 .album-card:hover { transform:translateY(-2px); box-shadow:0 4px 16px rgba(0,0,0,.3); }
-.album-card img { width:100%; aspect-ratio:1; object-fit:cover; background:var(--bg3); }
-.album-card .card-info { padding:8px 10px; }
-.album-card .card-title { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.album-card .card-sub { font-size:11px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.album-card:hover .card-dl-overlay { opacity:1; }
+.album-card img { width:100%; aspect-ratio:1; object-fit:cover; background:var(--bg3); display:block; }
+.album-card .card-img-wrap { position:relative; }
+.card-dl-overlay {
+    position:absolute; inset:0; background:rgba(0,0,0,.55);
+    display:flex; align-items:center; justify-content:center;
+    opacity:0; transition:opacity .15s;
+}
+.card-dl-overlay button {
+    padding:6px 14px; background:var(--accent); color:#000;
+    border:none; border-radius:4px; cursor:pointer; font-size:12px; font-weight:600;
+}
+.album-card .card-info { padding:8px 10px 10px; }
+.album-card .card-title { font-size:12px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.album-card .card-artist { font-size:11px; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; }
+.album-card .card-meta { font-size:10px; color:var(--text2); margin-top:4px; display:flex; gap:6px; flex-wrap:wrap; }
+.album-card .card-badge {
+    background:var(--bg3); border:1px solid var(--border);
+    border-radius:3px; padding:1px 5px; font-size:10px; color:var(--text2);
+}
 
 /* Playlist list */
 .pl-item {
@@ -202,6 +306,18 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 }
 .settings-row input:focus, .settings-row select:focus { outline:none; border-color:var(--accent); }
 
+/* Theme picker */
+.theme-grid {
+    display:flex; flex-wrap:wrap; gap:6px; padding:4px 0;
+}
+.theme-swatch {
+    padding:5px 12px; border-radius:4px; cursor:pointer; font-size:12px;
+    border:2px solid var(--border); background:var(--bg3); color:var(--text2);
+    transition:border-color .15s, color .15s;
+}
+.theme-swatch:hover { border-color:var(--accent2); color:var(--text); }
+.theme-swatch.active { border-color:var(--accent); color:var(--accent); font-weight:600; }
+
 /* Toggle */
 .toggle { position:relative; width:40px; height:22px; cursor:pointer; display:inline-block; }
 .toggle input { opacity:0; width:0; height:0; }
@@ -224,34 +340,170 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .account-status .dot { width:10px; height:10px; border-radius:50%; }
 .account-status .dot.on { background:var(--success); }
 .account-status .dot.off { background:var(--error); }
-.account-actions { display:flex; gap:8px; }
+.account-actions { display:flex; flex-direction:column; gap:10px; }
+.login-method-card {
+    background:var(--bg3); border:1px solid var(--border); border-radius:8px;
+    padding:14px 18px; cursor:pointer; transition:border-color .15s, background .15s;
+}
+.login-method-card:hover { border-color:var(--accent); background:rgba(0,210,255,.06); }
+.login-method-header {
+    display:flex; align-items:center; gap:8px;
+    font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px;
+}
+.login-method-desc { font-size:11px; color:var(--text2); line-height:1.5; }
 
 /* Utility */
 .hidden { display:none!important; }
 .empty { padding:40px; text-align:center; color:var(--text2); font-size:14px; }
 .loading { padding:40px; text-align:center; color:var(--accent); font-size:14px; }
 .error-msg { color:var(--error); }
+
+/* Login URL modal */
+#login-modal-overlay {
+    display:none; position:fixed; inset:0;
+    background:rgba(0,0,0,.6); z-index:1000;
+    align-items:center; justify-content:center;
+}
+#login-modal-overlay.visible { display:flex; }
+#login-modal {
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:8px; padding:28px 32px; max-width:480px; width:90%;
+}
+#login-modal h2 { font-size:16px; margin-bottom:12px; color:var(--text); }
+#login-modal p { font-size:13px; color:var(--text2); margin-bottom:16px; line-height:1.5; }
+#login-modal .login-url-link {
+    display:block; word-break:break-all; color:var(--accent);
+    font-size:12px; text-decoration:none; margin-bottom:20px;
+    padding:10px 12px; background:var(--bg3); border-radius:4px;
+    border:1px solid var(--border);
+}
+#login-modal .login-url-link:hover { text-decoration:underline; }
+#login-modal .modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+/* Onboard */
+#onboard-overlay {
+    display:none; position:fixed; inset:0; z-index:500;
+    background:var(--bg); align-items:center; justify-content:center;
+    flex-direction:column; gap:0;
+}
+#onboard-overlay.visible { display:flex; }
+.onboard-box {
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:12px; padding:48px 56px; max-width:520px; width:90%;
+    text-align:center; position:relative;
+}
+.onboard-logo {
+    font-size:48px; font-weight:800; color:var(--accent);
+    letter-spacing:2px; margin-bottom:8px;
+}
+.onboard-tagline {
+    font-size:13px; color:var(--text2); margin-bottom:36px;
+}
+.onboard-methods {
+    display:flex; flex-direction:column; gap:12px; margin-bottom:32px;
+}
+.onboard-method {
+    background:var(--bg3); border:1px solid var(--border);
+    border-radius:8px; padding:20px 24px; cursor:pointer;
+    text-align:left; transition:border-color .15s, background .15s;
+}
+.onboard-method:hover { border-color:var(--accent); background:rgba(0,210,255,.06); }
+.onboard-method-title {
+    font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px;
+    display:flex; align-items:center; gap:8px;
+}
+.onboard-method-badge {
+    font-size:10px; padding:1px 6px; border-radius:10px;
+    background:var(--accent); color:var(--bg); font-weight:700;
+}
+.onboard-method-desc { font-size:12px; color:var(--text2); line-height:1.5; }
+.onboard-footer { font-size:11px; color:var(--text2); line-height:1.6; }
+.onboard-footer a { color:var(--accent); text-decoration:none; }
 </style>
 </head>
 <body>
+
+<!-- OAuth Login URL modal -->
+<div id="login-modal-overlay">
+    <div id="login-modal">
+        <h2 data-i18n="login.title">Open in Browser</h2>
+        <p data-i18n="login.desc">Browser will open automatically. If not, click the link below.</p>
+        <a id="login-modal-link" class="login-url-link" href="#" target="_blank"></a>
+        <div class="modal-actions">
+            <button class="btn" onclick="closeLoginModal()" data-i18n="login.close">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- PKCE Login modal -->
+<div id="pkce-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center">
+    <div id="login-modal" style="max-width:560px">
+        <h2 data-i18n="login.pkceTitle">Login with PKCE (HiRes Lossless)</h2>
+        <p data-i18n="login.pkceDesc" style="margin-bottom:14px">Browser will open for Tidal login. After approving, copy the full redirect URL from the address bar and paste it below.</p>
+
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px" data-i18n="login.pkceStep1">① Click the link below to open Tidal login:</div>
+        <a id="pkce-modal-link" class="login-url-link" href="#" target="_blank" style="margin-bottom:16px;font-size:11px"></a>
+
+        <div style="font-size:11px;color:var(--text2);margin-bottom:4px" data-i18n="login.pkceStep2">② Login completes → browser shows "Page not found" — that's normal. Copy the full URL from the address bar and paste here:</div>
+        <input id="pkce-redirect-input" type="text" placeholder="https://tidal.com/android/login/auth?code=..."
+            style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:4px;font-size:12px;margin-bottom:16px;box-sizing:border-box"
+            onkeydown="if(event.key==='Enter')submitPkce()">
+
+        <div class="modal-actions">
+            <button class="btn btn-ghost" onclick="closePkceModal()" data-i18n="login.close">Close</button>
+            <button class="btn" onclick="submitPkce()" data-i18n="login.pkceSubmit">Submit</button>
+        </div>
+    </div>
+</div>
+
+<!-- Onboard overlay (shown when not logged in) -->
+<div id="onboard-overlay">
+    <div class="onboard-box">
+        <div style="position:absolute;top:20px;right:20px">
+            <select id="onboard-lang-select" onchange="applyLang(this.value)"
+                style="background:var(--bg3);border:1px solid var(--border);color:var(--text);
+                       padding:5px 10px;border-radius:6px;font-size:12px;cursor:pointer">
+            </select>
+        </div>
+        <div class="onboard-logo">tdl</div>
+        <div class="onboard-tagline" data-i18n="onboard.tagline">Tidal Downloader — sign in to get started</div>
+        <div class="onboard-methods">
+            <button class="onboard-method" onclick="doLogin()">
+                <div class="onboard-method-title">
+                    <span data-i18n="onboard.oauthTitle">Login with OAuth</span>
+                    <span class="onboard-method-badge" data-i18n="onboard.recommended">Recommended</span>
+                </div>
+                <div class="onboard-method-desc" data-i18n="onboard.oauthDesc">Supports up to FLAC Lossless quality. Browser opens automatically — just approve and done.</div>
+            </button>
+            <button class="onboard-method" onclick="doLoginPkce()">
+                <div class="onboard-method-title">
+                    <span data-i18n="onboard.pkceTitle">Login with PKCE</span>
+                    <span class="onboard-method-badge" style="background:var(--accent2)" data-i18n="onboard.hiRes">HiRes Lossless</span>
+                </div>
+                <div class="onboard-method-desc" data-i18n="onboard.pkceDesc">Required for HiRes Lossless quality. After browser login, paste the redirect URL back into the app.</div>
+            </button>
+        </div>
+        <div class="onboard-footer" data-i18n="onboard.footer">Your credentials are stored locally in <code>~/.tdl/</code> and never sent anywhere else.</div>
+    </div>
+</div>
 
 <div id="app">
 <!-- Sidebar -->
 <aside id="sidebar">
     <div class="brand">tdl</div>
     <div class="nav-group">
-        <button class="nav-btn active" data-page="download">Download</button>
-        <button class="nav-btn" data-page="search">Search</button>
+        <button class="nav-btn active" data-page="download" data-i18n="nav.download">Download</button>
+        <button class="nav-btn" data-page="search" data-i18n="nav.search">Search</button>
     </div>
     <div class="nav-group">
-        <div class="nav-group-title">Library</div>
-        <button class="nav-btn" data-page="favorites">Favorites</button>
-        <button class="nav-btn" data-page="playlists">Playlists</button>
+        <div class="nav-group-title" data-i18n="nav.library">Library</div>
+        <button class="nav-btn" data-page="favorites" data-i18n="nav.favorites">Favorites</button>
+        <button class="nav-btn" data-page="playlists" data-i18n="nav.playlists">Playlists</button>
     </div>
     <div class="nav-group">
-        <div class="nav-group-title">Settings</div>
-        <button class="nav-btn" data-page="settings">Settings</button>
-        <button class="nav-btn" data-page="account">Account</button>
+        <div class="nav-group-title" data-i18n="nav.system">Settings</div>
+        <button class="nav-btn" data-page="settings" data-i18n="nav.settings">Settings</button>
+        <button class="nav-btn" data-page="account" data-i18n="nav.account">Account</button>
     </div>
 </aside>
 
@@ -260,11 +512,15 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     <!-- Download -->
     <div id="page-download" class="page active">
         <div class="page-header">
-            <h1>Download</h1>
+            <h1 data-i18n="nav.download">Download</h1>
             <div class="dl-input-row">
-                <input id="dl-url" placeholder="Paste Tidal URL..." onkeydown="if(event.key==='Enter')startDownload()">
-                <button class="btn" onclick="startDownload()">Download</button>
+                <input id="dl-url" data-i18n-placeholder="dl.placeholder" placeholder="Paste Tidal URL..." onkeydown="if(event.key==='Enter')startDownload()">
+                <button class="btn" onclick="startDownload()" data-i18n="dl.download">Download</button>
             </div>
+        </div>
+        <div id="dl-header" style="display:none;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text2)">
+            <span data-i18n="dl.history">History</span>
+            <button class="btn btn-sm btn-ghost" onclick="clearDlLog()" style="margin-left:auto" data-i18n="btn.clear">Clear</button>
         </div>
         <div class="dl-list" id="dl-list"></div>
     </div>
@@ -272,15 +528,15 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     <!-- Search -->
     <div id="page-search" class="page">
         <div class="page-header">
-            <h1>Search</h1>
+            <h1 data-i18n="nav.search">Search</h1>
             <div class="search-bar">
-                <input id="search-input" placeholder="Search Tidal..." onkeydown="if(event.key==='Enter')doSearch()">
-                <button class="btn" onclick="doSearch()">Search</button>
+                <input id="search-input" data-i18n-placeholder="search.placeholder" placeholder="Search Tidal..." onkeydown="if(event.key==='Enter')doSearch()">
+                <button class="btn" onclick="doSearch()" data-i18n="search.btn">Search</button>
             </div>
             <div class="search-filter">
-                <button class="filter-btn active" data-filter="tracks">Tracks</button>
-                <button class="filter-btn" data-filter="albums">Albums</button>
-                <button class="filter-btn" data-filter="playlists">Playlists</button>
+                <button class="filter-btn active" data-filter="tracks" data-i18n="filter.tracks">Tracks</button>
+                <button class="filter-btn" data-filter="albums" data-i18n="filter.albums">Albums</button>
+                <button class="filter-btn" data-filter="playlists" data-i18n="filter.playlists">Playlists</button>
             </div>
         </div>
         <div class="page-body" id="search-results"></div>
@@ -289,12 +545,12 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     <!-- Favorites -->
     <div id="page-favorites" class="page">
         <div class="page-header">
-            <h1>Favorites</h1>
+            <h1 data-i18n="nav.favorites">Favorites</h1>
             <div class="search-filter">
-                <button class="filter-btn active" data-fav="tracks" onclick="loadFav('tracks')">Tracks</button>
-                <button class="filter-btn" data-fav="albums" onclick="loadFav('albums')">Albums</button>
+                <button class="filter-btn active" data-fav="tracks" onclick="loadFav('tracks')" data-i18n="filter.tracks">Tracks</button>
+                <button class="filter-btn" data-fav="albums" onclick="loadFav('albums')" data-i18n="filter.albums">Albums</button>
             </div>
-            <button class="btn btn-sm" onclick="downloadAllFav()">Download All</button>
+            <button class="btn btn-sm" onclick="downloadAllFav()" data-i18n="common.dlAll">Download All</button>
         </div>
         <div class="page-body" id="fav-results"></div>
     </div>
@@ -302,8 +558,8 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     <!-- Playlists -->
     <div id="page-playlists" class="page">
         <div class="page-header">
-            <h1>Playlists</h1>
-            <button class="btn btn-sm" onclick="loadPlaylists()">Refresh</button>
+            <h1 data-i18n="nav.playlists">Playlists</h1>
+            <button class="btn btn-sm" onclick="loadPlaylists()" data-i18n="common.refresh">Refresh</button>
         </div>
         <div class="page-body" id="pl-results"></div>
     </div>
@@ -311,15 +567,15 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     <!-- Settings -->
     <div id="page-settings" class="page">
         <div class="page-header">
-            <h1>Settings</h1>
-            <button class="btn" onclick="saveSettings()">Save</button>
+            <h1 data-i18n="nav.settings">Settings</h1>
+            <button class="btn" onclick="saveSettings()" data-i18n="settings.save">Save</button>
         </div>
         <div class="settings-scroll" id="settings-body"></div>
     </div>
 
     <!-- Account -->
     <div id="page-account" class="page">
-        <div class="page-header"><h1>Account</h1></div>
+        <div class="page-header"><h1 data-i18n="nav.account">Account</h1></div>
         <div class="page-body" id="account-body"></div>
     </div>
 </main>
@@ -327,10 +583,14 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 <!-- Right panel -->
 <aside id="panel">
     <div id="cover-area">
-        <div class="placeholder">No track selected</div>
+        <div class="placeholder" data-i18n="panel.noTrack">No track selected</div>
     </div>
     <div id="queue-area">
-        <h3>Download Queue <span id="queue-count" class="badge">0</span></h3>
+        <h3>
+            <span data-i18n="panel.queue">Download Queue</span>
+            <span id="queue-count" class="badge">0</span>
+            <button id="queue-clear-btn" class="btn btn-sm btn-ghost" onclick="clearQueue()" style="margin-left:auto;display:none" data-i18n="btn.clear">Clear</button>
+        </h3>
         <div id="queue-list"></div>
     </div>
 </aside>
@@ -339,6 +599,10 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 <div id="statusbar">
     <span class="dot" id="status-dot"></span>
     <span id="status-text">Ready</span>
+    <div class="sb-qual">
+        <span class="sb-badge" id="sb-audio-qual" title="Audio Quality"></span>
+        <span class="sb-badge" id="sb-video-qual" title="Video Quality"></span>
+    </div>
 </div>
 
 <script>
@@ -383,7 +647,7 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
         document.querySelectorAll('[data-filter]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         searchFilter = btn.dataset.filter;
-        doSearch();
+        if (lastSearchRes) renderSearchResults(); else doSearch();
     });
 });
 
@@ -400,18 +664,40 @@ function artistName(item) {
 function trackTitle(t) { return t.fullName || t.title || t.name || ''; }
 function coverUrl(uuid, size = 320) {
     if (!uuid) return '';
-    return `https://resources.tidal.com/images/${uuid}/${size}x${size}.jpg`;
+    const id = uuid.replaceAll('-', '/');
+    return `https://resources.tidal.com/images/${id}/${size}x${size}.jpg`;
 }
 
-// ---- Cover art ----
+// ---- Cover art / track info panel ----
 function setCover(title, artist, coverUuid) {
+    setTrackInfo({ title, artist, coverUuid });
+}
+
+function setTrackInfo(t) {
     const area = document.getElementById('cover-area');
+    const coverUuid = t.coverUuid || t.album?.cover;
     const img = coverUrl(coverUuid);
-    area.innerHTML = img
-        ? `<img src="${img}" onerror="this.style.display='none';this.nextElementSibling.style.display=''"><div class="placeholder" style="display:none">No cover</div>`
-        : '<div class="placeholder">No cover</div>';
-    if (title) area.innerHTML += `<div class="cover-title">${title}</div>`;
-    if (artist) area.innerHTML += `<div class="cover-artist">${artist}</div>`;
+    const title = t.title || t.fullName || t.name || '';
+    const artist = t.artists?.length
+        ? t.artists.map(a => a.name).join(', ')
+        : (typeof t.artist === 'string' ? t.artist : t.artist?.name) || '';
+    const album = t.album?.name || '';
+    const qual = fmtQuality(t.audioQuality || t.audio_quality);
+    const trkNum = t.trackNum ?? t.track_num;
+    const volNum = t.volumeNum ?? t.volume_num;
+    const trk = trkNum != null ? (volNum > 1 ? `${volNum}-${trkNum}` : `${trkNum}`) : '';
+    const dur = t.duration ? fmtDuration(t.duration) : '';
+    const isrc = t.isrc || '';
+    const year = t.album?.releaseDate?.slice(0,4) || '';
+
+    area.innerHTML = `
+        ${img ? `<img src="${img}" onerror="this.style.display='none'">` : '<div class="placeholder">No cover</div>'}
+        ${title ? `<div class="cover-title">${title}</div>` : ''}
+        ${artist ? `<div class="cover-artist">${artist}</div>` : ''}
+        ${album || year ? `<div class="cover-meta">${[album, year].filter(Boolean).join(' · ')}</div>` : ''}
+        ${trk || qual || dur ? `<div class="cover-meta">${[trk ? `#${trk}` : '', qual, dur].filter(Boolean).join(' · ')}</div>` : ''}
+        ${isrc ? `<div class="cover-isrc">${isrc}</div>` : ''}
+    `;
 }
 
 // ---- Queue ----
@@ -431,8 +717,11 @@ function updateQueue(id, status, progress) {
 function renderQueue() {
     const list = document.getElementById('queue-list');
     const count = document.getElementById('queue-count');
+    const clearBtn = document.getElementById('queue-clear-btn');
     count.textContent = queue.size;
     list.innerHTML = '';
+    const hasFinished = [...queue.values()].some(i => i.status !== 'downloading');
+    if (clearBtn) clearBtn.style.display = hasFinished ? '' : 'none';
     for (const [id, item] of queue) {
         const pct = item.status === 'completed' ? 100 : item.status === 'error' ? 100 : 0;
         list.innerHTML += `<div class="queue-item ${item.status}">
@@ -441,6 +730,13 @@ function renderQueue() {
             <div class="q-status">${item.status === 'downloading' ? item.progress || 'Downloading...' : item.status}</div>
         </div>`;
     }
+}
+
+function clearQueue() {
+    for (const [id, item] of queue) {
+        if (item.status !== 'downloading') queue.delete(id);
+    }
+    renderQueue();
 }
 
 // ---- Download ----
@@ -471,6 +767,7 @@ async function dlUrl(url, name) {
 
 function addDlLog(name, status, error) {
     const list = document.getElementById('dl-list');
+    const header = document.getElementById('dl-header');
     const icon = status === 'completed' ? '&#10003;' : '&#10007;';
     const color = status === 'completed' ? 'var(--success)' : 'var(--error)';
     const sub = error ? `<div class="dl-sub error-msg">${error}</div>` : '';
@@ -478,9 +775,19 @@ function addDlLog(name, status, error) {
         <div class="dl-icon" style="color:${color}">${icon}</div>
         <div class="dl-info"><div class="dl-title">${name}</div>${sub}</div>
     </div>` + list.innerHTML;
+    if (header) header.style.display = 'flex';
+}
+
+function clearDlLog() {
+    const list = document.getElementById('dl-list');
+    const header = document.getElementById('dl-header');
+    if (list) list.innerHTML = '';
+    if (header) header.style.display = 'none';
 }
 
 // ---- Search ----
+let lastSearchRes = null;
+
 async function doSearch() {
     const q = document.getElementById('search-input').value.trim();
     if (!q) return;
@@ -489,34 +796,191 @@ async function doSearch() {
 
     try {
         const res = await invoke('search_media', { query: q, limit: 50 });
-        if (searchFilter === 'tracks') renderSearchTracks(res.tracks?.items || []);
-        else if (searchFilter === 'albums') renderSearchAlbums(res.albums?.items || []);
-        else if (searchFilter === 'playlists') renderSearchPlaylists(res.playlists?.items || []);
+        lastSearchRes = res;
+        renderSearchResults();
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Search failed: ${e}</div>`;
     }
 }
 
-function renderSearchTracks(tracks) {
-    const area = document.getElementById('search-results');
-    if (!tracks.length) { area.innerHTML = '<div class="empty">No tracks found</div>'; return; }
-    let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
+function renderSearchResults() {
+    if (!lastSearchRes) return;
+    if (searchFilter === 'tracks') renderSearchTracks(lastSearchRes.tracks?.items || []);
+    else if (searchFilter === 'albums') renderSearchAlbums(lastSearchRes.albums?.items || []);
+    else if (searchFilter === 'playlists') renderSearchPlaylists(lastSearchRes.playlists?.items || []);
+}
+
+// ---- Shared track table renderer ----
+// opts: { emptyMsg }
+function renderTrackTable(tracks, areaId, opts = {}) {
+    const area = document.getElementById(areaId);
+    const emptyMsg = opts.emptyMsg || 'No tracks found';
+    if (!tracks.length) { area.innerHTML += `<div class="empty">${emptyMsg}</div>`; return; }
+    if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
+
+    const uid = areaId.replace(/[^a-z]/gi, '');
+
+    let html = `
+    <div class="sel-toolbar" id="${uid}-sel-toolbar">
+        <span class="sel-count" id="${uid}-sel-count">0 selected</span>
+        <button class="btn btn-sm" onclick="downloadSelected('${uid}')">Download Selected</button>
+        <button class="btn btn-sm" onclick="clearSelection('${uid}')">Clear</button>
+    </div>
+    <table class="track-table" id="${uid}-table">
+    <thead><tr>
+        <th class="col-chk"><input type="checkbox" id="${uid}-chk-all" onclick="toggleAllTracks('${uid}',this.checked)"></th>
+        <th class="col-num">#</th>
+        <th>Title</th>
+        <th>Artist</th>
+        <th>Album</th>
+        <th class="col-trk">Trk</th>
+        <th class="col-qual">Quality</th>
+        <th class="col-isrc">ISRC</th>
+        <th class="col-dur">Duration</th>
+        <th class="col-act"></th>
+    </tr></thead><tbody>`;
+
     tracks.forEach((t, i) => {
         const album = t.album || {};
-        setCover(trackTitle(t), artistName(t), album.cover);
-        html += `<tr>
+        const qual = fmtQuality(t.audioQuality || t.audio_quality);
+        const trkNum = t.trackNum ?? t.track_num;
+        const volNum = t.volumeNum ?? t.volume_num;
+        const trk = trkNum != null ? `${trkNum}${volNum > 1 ? '·' + volNum : ''}` : '';
+        const isrc = t.isrc || '';
+        const safeArtist = artistName(t).replace(/'/g, "\\'");
+        const safeTitle = trackTitle(t).replace(/'/g, "\\'");
+        const safeAlbumName = (album.name || '').replace(/'/g, "\\'");
+
+        const artistId = t.artists?.[0]?.id ?? t.artist?.id;
+        const artistCell = artistId
+            ? `<span class="nav-link" onclick="event.stopPropagation();browseArtist(${artistId},'${safeArtist}','${areaId}')">${artistName(t)}</span>`
+            : artistName(t);
+        const albumId = album.id;
+        const albumCell = albumId
+            ? `<span class="nav-link" onclick="event.stopPropagation();browseAlbumInArea(${albumId},'${safeAlbumName}','${areaId}')">${album.name || ''}</span>`
+            : (album.name || '');
+
+        html += `<tr data-id="${t.id}" data-url="https://tidal.com/browse/track/${t.id}" data-name="${safeArtist} - ${safeTitle}" onclick="rowClick(event,'${uid}',this)">
+            <td class="col-chk" onclick="event.stopPropagation()"><input type="checkbox" class="${uid}-row-chk" onchange="onRowCheck('${uid}')" data-idx="${i}"></td>
             <td class="col-num">${i + 1}</td>
-            <td class="col-artist">${artistName(t)}</td>
             <td>${trackTitle(t)}</td>
-            <td class="col-album">${album.name || ''}</td>
+            <td class="col-artist">${artistCell}</td>
+            <td class="col-album">${albumCell}</td>
+            <td class="col-trk">${trk}</td>
+            <td class="col-qual">${qual}</td>
+            <td class="col-isrc">${isrc}</td>
             <td class="col-dur">${fmtDuration(t.duration)}</td>
-            <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
+            <td class="col-act"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/track/${t.id}','${safeArtist} - ${safeTitle}')">DL</button></td>
         </tr>`;
     });
     html += '</tbody></table>';
-    area.innerHTML = html;
-    // Set cover to first track
-    if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
+    area.innerHTML = (area.innerHTML || '') + html;
+    window[uid + '_tracks'] = tracks;
+}
+
+function fmtQuality(q) {
+    if (!q) return '';
+    switch (q.toLowerCase()) {
+        case 'hi_res_lossless': return 'HiRes';
+        case 'high_lossless': return 'FLAC';
+        case 'low_320k': return '320k';
+        case 'low_96k': return '96k';
+        default: return q;
+    }
+}
+
+function rowClick(e, uid, row) {
+    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+    const chk = row.querySelector('input[type=checkbox]');
+    chk.checked = !chk.checked;
+    onRowCheck(uid);
+    // update sidebar with this track's info
+    const idx = parseInt(chk.dataset.idx);
+    const tracks = window[uid + '_tracks'];
+    if (tracks?.[idx]) setTrackInfo(tracks[idx]);
+}
+
+function onRowCheck(uid) {
+    const checkboxes = document.querySelectorAll(`.${uid}-row-chk`);
+    const selected = [...checkboxes].filter(c => c.checked);
+    const toolbar = document.getElementById(`${uid}-sel-toolbar`);
+    const visible = selected.length > 0;
+    if (toolbar) {
+        toolbar.classList.toggle('visible', visible);
+        // push thead down so it sits below the sticky toolbar
+        const h = visible ? (toolbar.offsetHeight || 37) + 'px' : '0px';
+        document.documentElement.style.setProperty('--thead-top', h);
+    }
+    const countEl = document.getElementById(`${uid}-sel-count`);
+    if (countEl) countEl.textContent = `${selected.length} selected`;
+    const allChk = document.getElementById(`${uid}-chk-all`);
+    if (allChk) {
+        allChk.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
+        allChk.checked = checkboxes.length > 0 && selected.length === checkboxes.length;
+    }
+}
+
+function toggleAllTracks(uid, checked) {
+    document.querySelectorAll(`.${uid}-row-chk`).forEach(c => c.checked = checked);
+    onRowCheck(uid);
+}
+
+function clearSelection(uid) {
+    document.querySelectorAll(`.${uid}-row-chk`).forEach(c => c.checked = false);
+    const allChk = document.getElementById(`${uid}-chk-all`);
+    if (allChk) { allChk.checked = false; allChk.indeterminate = false; }
+    const toolbar = document.getElementById(`${uid}-sel-toolbar`);
+    if (toolbar) toolbar.classList.remove('visible');
+}
+
+function downloadSelected(uid) {
+    const rows = document.querySelectorAll(`#${uid}-table tbody tr`);
+    rows.forEach(row => {
+        const chk = row.querySelector('input[type=checkbox]');
+        if (chk?.checked) {
+            dlUrl(row.dataset.url, row.dataset.name);
+        }
+    });
+    clearSelection(uid);
+}
+
+function renderSearchTracks(tracks) {
+    document.getElementById('search-results').innerHTML = '';
+    renderTrackTable(tracks, 'search-results', { emptyMsg: 'No tracks found' });
+}
+
+function albumCardHtml(a, onClickExpr, dlExpr) {
+    const img = coverUrl(a.cover, 320);
+    const artist = a.artist?.name || a.artists?.find(ar => ar.role === 'MAIN')?.name || a.artists?.[0]?.name || '';
+    const year = a.releaseDate ? a.releaseDate.slice(0, 4) : (a.streamStartDate ? a.streamStartDate.slice(0, 4) : '');
+    const numTracks = a.numTracks != null ? a.numTracks + ' tracks' : '';
+    const type = a.type ? fmtAlbumType(a.type) : '';
+    const safeName = (a.name || '').replace(/'/g, "\\'");
+    return `<div class="album-card" onclick="${onClickExpr}">
+        <div class="card-img-wrap">
+            ${img ? `<img src="${img}" loading="lazy" onerror="this.style.display='none'">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
+            <div class="card-dl-overlay"><button onclick="event.stopPropagation();${dlExpr}">Download</button></div>
+        </div>
+        <div class="card-info">
+            <div class="card-title">${a.name || ''}</div>
+            <div class="card-artist">${artist}</div>
+            <div class="card-meta">
+                ${year ? `<span>${year}</span>` : ''}
+                ${numTracks ? `<span>${numTracks}</span>` : ''}
+                ${type ? `<span class="card-badge">${type}</span>` : ''}
+            </div>
+        </div>
+    </div>`;
+}
+
+function fmtAlbumType(t) {
+    switch ((t || '').toUpperCase()) {
+        case 'ALBUM': return 'Album';
+        case 'EP': return 'EP';
+        case 'SINGLE': return 'Single';
+        case 'COMPILATION': return 'Compilation';
+        default: return t;
+    }
 }
 
 function renderSearchAlbums(albums) {
@@ -524,15 +988,11 @@ function renderSearchAlbums(albums) {
     if (!albums.length) { area.innerHTML = '<div class="empty">No albums found</div>'; return; }
     let html = '<div class="album-grid">';
     albums.forEach(a => {
-        const img = coverUrl(a.cover, 320);
-        const artist = a.artist?.name || a.artists?.find(ar => ar.role === 'MAIN')?.name || '';
-        html += `<div class="album-card" onclick="browseAlbum(${a.id},'${a.name.replace(/'/g,"\\'")}')">
-            ${img ? `<img src="${img}" loading="lazy">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
-            <div class="card-info">
-                <div class="card-title">${a.name || ''}</div>
-                <div class="card-sub">${artist}</div>
-            </div>
-        </div>`;
+        const safeName = (a.name || '').replace(/'/g, "\\'");
+        html += albumCardHtml(a,
+            `browseAlbum(${a.id},'${safeName}')`,
+            `dlUrl('https://tidal.com/browse/album/${a.id}','${safeName}')`
+        );
     });
     html += '</div>';
     area.innerHTML = html;
@@ -558,18 +1018,63 @@ function renderSearchPlaylists(playlists) {
 }
 
 // ---- Browse album/playlist ----
+function browseHeader(label, dlUrl, dlName, backFn) {
+    const safeBack = backFn ? `onclick="${backFn}"` : '';
+    return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0">
+        ${backFn ? `<button class="btn btn-sm" ${safeBack}>&larr;</button>` : ''}
+        <strong style="flex:1;font-size:13px">${label}</strong>
+        <button class="btn btn-sm" onclick="dlUrl('${dlUrl}','${dlName.replace(/'/g,"\\'")}')">Download All</button>
+    </div>`;
+}
+
 async function browseAlbum(albumId, name) {
-    const area = document.getElementById('search-results');
+    await browseAlbumInArea(albumId, name, 'search-results');
+}
+
+async function browseAlbumInArea(albumId, name, areaId) {
+    const backFn = areaBackFn(areaId);
+    const area = document.getElementById(areaId);
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     try {
         const tracks = await invoke('get_album_tracks', { albumId });
-        if (tracks.length) setCover(name, artistName(tracks[0]), tracks[0]?.album?.cover);
-        renderSearchTracks(tracks);
-        // Add download all button
-        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/album/${albumId}','${name.replace(/'/g,"\\'")}')">Download Album</button></div>` + area.innerHTML;
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, backFn);
+        renderTrackTable(tracks, areaId, { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
     }
+}
+
+async function browseArtist(artistId, name, areaId) {
+    const backFn = areaBackFn(areaId);
+    const area = document.getElementById(areaId);
+    area.innerHTML = '<div class="loading">Loading albums...</div>';
+    try {
+        const albums = await invoke('get_artist_albums', { artistId });
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/artist/${artistId}`, name, backFn);
+        if (!albums.length) { area.innerHTML += '<div class="empty">No albums found</div>'; return; }
+        let grid = '<div class="album-grid">';
+        albums.forEach(a => {
+            const aName = a.name || '';
+            const safeAreaId = areaId;
+            const cover = a.cover ? coverUrl(a.cover, 160) : '';
+            const year = a.releaseYear || a.release_year || '';
+            grid += `<div class="album-card" onclick="browseAlbumInArea(${a.id},'${aName.replace(/'/g,"\\'")}','${safeAreaId}')">
+                ${cover ? `<img src="${cover}" alt="${aName}" loading="lazy">` : '<div class="no-cover"></div>'}
+                <div class="album-info"><div class="album-name">${aName}</div><div class="album-year">${year}</div></div>
+            </div>`;
+        });
+        grid += '</div>';
+        area.innerHTML += grid;
+    } catch (e) {
+        area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
+    }
+}
+
+function areaBackFn(areaId) {
+    if (areaId === 'search-results') return 'renderSearchResults()';
+    if (areaId === 'fav-results') return 'loadFav(\'tracks\')';
+    if (areaId === 'pl-results') return 'loadPlaylists()';
+    return null;
 }
 
 async function browsePlaylist(plId, name) {
@@ -577,8 +1082,8 @@ async function browsePlaylist(plId, name) {
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     try {
         const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
-        renderSearchTracks(tracks);
-        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/playlist/${plId}','${name.replace(/'/g,"\\'")}')">Download Playlist</button></div>` + area.innerHTML;
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'renderSearchResults()');
+        renderTrackTable(tracks, 'search-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
     }
@@ -606,22 +1111,8 @@ async function loadFav(type) {
 }
 
 function renderFavTracks(tracks) {
-    const area = document.getElementById('fav-results');
-    if (!tracks.length) { area.innerHTML = '<div class="empty">No favorite tracks</div>'; return; }
-    if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
-    let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
-    tracks.forEach((t, i) => {
-        html += `<tr>
-            <td class="col-num">${i + 1}</td>
-            <td class="col-artist">${artistName(t)}</td>
-            <td>${trackTitle(t)}</td>
-            <td class="col-album">${t.album?.name || ''}</td>
-            <td class="col-dur">${fmtDuration(t.duration)}</td>
-            <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
-        </tr>`;
-    });
-    html += '</tbody></table>';
-    area.innerHTML = html;
+    document.getElementById('fav-results').innerHTML = '';
+    renderTrackTable(tracks, 'fav-results', { emptyMsg: 'No favorite tracks' });
 }
 
 function renderFavAlbums(albums) {
@@ -629,14 +1120,11 @@ function renderFavAlbums(albums) {
     if (!albums.length) { area.innerHTML = '<div class="empty">No favorite albums</div>'; return; }
     let html = '<div class="album-grid">';
     albums.forEach(a => {
-        const img = coverUrl(a.cover, 320);
-        html += `<div class="album-card" onclick="browseFavAlbum(${a.id},'${(a.name||'').replace(/'/g,"\\'")}')">
-            ${img ? `<img src="${img}" loading="lazy">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
-            <div class="card-info">
-                <div class="card-title">${a.name || ''}</div>
-                <div class="card-sub">${a.artist?.name || ''}</div>
-            </div>
-        </div>`;
+        const safeName = (a.name || '').replace(/'/g, "\\'");
+        html += albumCardHtml(a,
+            `browseFavAlbum(${a.id},'${safeName}')`,
+            `dlUrl('https://tidal.com/browse/album/${a.id}','${safeName}')`
+        );
     });
     html += '</div>';
     area.innerHTML = html;
@@ -647,8 +1135,8 @@ async function browseFavAlbum(albumId, name) {
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     try {
         const tracks = await invoke('get_album_tracks', { albumId });
-        renderFavTracks(tracks);
-        area.innerHTML = `<div style="padding:12px 16px;border-bottom:1px solid var(--border)"><button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/album/${albumId}','${name.replace(/'/g,"\\'")}')">Download Album</button></div>` + area.innerHTML;
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'tracks\')');
+        renderTrackTable(tracks, 'fav-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
     }
@@ -691,65 +1179,479 @@ async function loadPlaylists() {
 
 async function browsePlTracks(plId, name) {
     const area = document.getElementById('pl-results');
-    area.innerHTML = `<div style="padding:12px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
-        <button class="btn btn-sm" onclick="loadPlaylists()">&larr; Back</button>
-        <strong>${name}</strong>
-        <button class="btn btn-sm" onclick="dlUrl('https://tidal.com/browse/playlist/${plId}','${name.replace(/'/g,"\\'")}')">Download All</button>
-    </div><div class="loading">Loading...</div>`;
+    area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'loadPlaylists()') + '<div class="loading">Loading...</div>';
     try {
         const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
         playlistTracks = tracks;
-        if (tracks[0]?.album?.cover) setCover(name, '', tracks[0].album.cover);
-        let html = '<table class="track-table"><thead><tr><th class="col-num">#</th><th>Artist</th><th>Title</th><th>Album</th><th class="col-dur">Duration</th><th></th></tr></thead><tbody>';
-        tracks.forEach((t, i) => {
-            html += `<tr>
-                <td class="col-num">${i + 1}</td>
-                <td class="col-artist">${artistName(t)}</td>
-                <td>${trackTitle(t)}</td>
-                <td class="col-album">${t.album?.name || ''}</td>
-                <td class="col-dur">${fmtDuration(t.duration)}</td>
-                <td><button class="dl-btn" onclick="dlUrl('https://tidal.com/browse/track/${t.id}','${artistName(t).replace(/'/g,"\\'")} - ${trackTitle(t).replace(/'/g,"\\'")}')">DL</button></td>
-            </tr>`;
-        });
-        html += '</tbody></table>';
-        area.innerHTML = area.innerHTML.replace('<div class="loading">Loading...</div>', '') + html;
+        area.innerHTML = area.innerHTML.replace('<div class="loading">Loading...</div>', '');
+        renderTrackTable(tracks, 'pl-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${e}</div>`;
     }
 }
 
 // ---- Settings ----
-const settingsFields = [
-    { key:'quality_audio', label:'Audio Quality', type:'enum', options:['low_96k','low_320k','high_lossless','hi_res_lossless'] },
-    { key:'quality_video', label:'Video Quality', type:'enum', options:['p360','p480','p720','p1080'] },
-    { key:'skip_existing', label:'Skip Existing', type:'bool' },
-    { key:'download_delay', label:'Download Delay', type:'bool' },
-    { key:'download_delay_sec_min', label:'Delay Min (s)', type:'number' },
-    { key:'download_delay_sec_max', label:'Delay Max (s)', type:'number' },
-    { key:'downloads_concurrent_max', label:'Concurrent Max', type:'number' },
-    { key:'downloads_simultaneous_per_track_max', label:'Segments/Track', type:'number' },
-    { key:'download_base_path', label:'Download Path', type:'text' },
-    { key:'path_binary_ffmpeg', label:'FFmpeg Path', type:'text' },
-    { key:'video_convert_mp4', label:'Convert to MP4', type:'bool' },
-    { key:'metadata_cover_dimension', label:'Cover Size', type:'enum', options:['px80','px160','px320','px640','px1280'] },
-    { key:'metadata_cover_embed', label:'Embed Cover', type:'bool' },
-    { key:'cover_album_file', label:'Cover File', type:'bool' },
-    { key:'extract_flac', label:'Extract FLAC', type:'bool' },
-    { key:'lyrics_embed', label:'Embed Lyrics', type:'bool' },
-    { key:'lyrics_file', label:'Lyrics File', type:'bool' },
-    { key:'metadata_replay_gain', label:'ReplayGain', type:'bool' },
-    { key:'playlist_create', label:'Create Playlist', type:'bool' },
-    { key:'album_track_num_pad_min', label:'Track Pad', type:'number' },
+// ── i18n ─────────────────────────────────────────────────────
+const LOCALES = {
+    en: {
+        _name: 'English', _flag: '🇺🇸',
+        'nav.download':'Download','nav.search':'Search','nav.library':'Library',
+        'nav.favorites':'Favorites','nav.playlists':'Playlists','nav.system':'System',
+        'nav.settings':'Settings','nav.account':'Account',
+        'dl.placeholder':'Paste Tidal URL...','dl.download':'Download',
+        'search.placeholder':'Search Tidal...','search.btn':'Search',
+        'filter.tracks':'Tracks','filter.albums':'Albums','filter.playlists':'Playlists',
+        'common.dlAll':'Download All','common.refresh':'Refresh','common.dl':'DL',
+        'common.back':'←','common.loading':'Loading...','common.searching':'Searching...',
+        'common.noResult':'No results found','common.failed':'Failed',
+        'common.dlSelected':'Download Selected','common.clear':'Clear',
+        'btn.clear':'Clear','dl.history':'History',
+        'panel.noTrack':'No track selected','panel.queue':'Download Queue',
+        'settings.save':'Save','settings.theme':'Theme',
+        'account.loggedIn':'Logged in as user','account.notLoggedIn':'Not logged in',
+        'account.logout':'Logout','account.loginOAuth':'Login (OAuth)','account.loginPkce':'Login (PKCE)',
+        'login.title':'Open in Browser','login.desc':'Browser will open automatically. If not, click the link below.',
+        'login.close':'Close',
+        'login.pkceTitle':'Login with PKCE (HiRes Lossless)',
+        'login.pkceDesc':'Browser will open for Tidal login. After approving, copy the full redirect URL from the address bar and paste it below.',
+        'login.pkceStep1':'① Click the link below to open Tidal login:',
+        'login.pkceStep2':'② Login completes → browser shows "Page not found" — that\'s normal. Copy the full URL from the address bar and paste here:',
+        'login.pkceSubmit':'Submit',
+        'col.title':'Title','col.artist':'Artist','col.album':'Album','col.trk':'Trk',
+        'col.quality':'Quality','col.isrc':'ISRC','col.duration':'Duration',
+        'fav.noTracks':'No favorite tracks','fav.noAlbums':'No favorite albums',
+        'pl.noTracks':'No tracks','search.noTracks':'No tracks found',
+        'search.noAlbums':'No albums found','search.noPlaylists':'No playlists found',
+        'status.ready':'Ready','status.loginSuccess':'Login successful','status.loginFail':'Login failed',
+        'status.saved':'Settings saved','status.saveFail':'Save failed',
+        'status.dlComplete':'Download complete',
+        'settings.language':'Language',
+        'onboard.tagline':'Tidal Downloader — sign in to get started',
+        'onboard.oauthTitle':'Login with OAuth','onboard.recommended':'Recommended',
+        'onboard.oauthDesc':'Supports up to FLAC Lossless. Browser opens automatically — just approve and you\'re done.',
+        'onboard.pkceTitle':'Login with PKCE','onboard.hiRes':'HiRes Lossless',
+        'onboard.pkceDesc':'Required for HiRes Lossless. After browser login, paste the redirect URL back into the app.',
+        'onboard.footer':'Credentials stored locally in ~/.tdl/ and never sent elsewhere.',
+        'sf.audioQuality':'Audio Quality','sf.videoQuality':'Video Quality',
+        'sf.skipExisting':'Skip Existing','sf.dlDelay':'Download Delay',
+        'sf.delayMin':'Delay Min (s)','sf.delayMax':'Delay Max (s)',
+        'sf.concurrentMax':'Concurrent Max','sf.segPerTrack':'Segments/Track',
+        'sf.dlPath':'Download Path','sf.ffmpegPath':'FFmpeg Path',
+        'sf.convertMp4':'Convert to MP4','sf.coverSize':'Cover Size',
+        'sf.embedCover':'Embed Cover','sf.coverFile':'Cover File',
+        'sf.extractFlac':'Extract FLAC','sf.embedLyrics':'Embed Lyrics',
+        'sf.lyricsFile':'Lyrics File','sf.replayGain':'ReplayGain',
+        'sf.createPlaylist':'Create Playlist','sf.trackPad':'Track Pad',
+    },
+    ko: {
+        _name: '한국어', _flag: '🇰🇷',
+        'nav.download':'다운로드','nav.search':'검색','nav.library':'라이브러리',
+        'nav.favorites':'즐겨찾기','nav.playlists':'플레이리스트','nav.system':'시스템',
+        'nav.settings':'설정','nav.account':'계정',
+        'dl.placeholder':'Tidal URL 붙여넣기...','dl.download':'다운로드',
+        'search.placeholder':'Tidal 검색...','search.btn':'검색',
+        'filter.tracks':'트랙','filter.albums':'앨범','filter.playlists':'플레이리스트',
+        'common.dlAll':'전체 다운로드','common.refresh':'새로고침','common.dl':'DL',
+        'common.back':'←','common.loading':'로딩 중...','common.searching':'검색 중...',
+        'common.noResult':'결과 없음','common.failed':'실패',
+        'common.dlSelected':'선택 다운로드','common.clear':'선택 해제',
+        'btn.clear':'지우기','dl.history':'기록',
+        'panel.noTrack':'트랙 미선택','panel.queue':'다운로드 대기열',
+        'settings.save':'저장','settings.theme':'테마',
+        'account.loggedIn':'로그인됨 (사용자)','account.notLoggedIn':'로그인 필요',
+        'account.logout':'로그아웃','account.loginOAuth':'로그인 (OAuth)','account.loginPkce':'로그인 (PKCE)',
+        'login.title':'브라우저에서 로그인','login.desc':'브라우저가 자동으로 열립니다. 열리지 않으면 아래 링크를 클릭하세요.',
+        'login.close':'닫기',
+        'login.pkceTitle':'PKCE 로그인 (HiRes Lossless)',
+        'login.pkceDesc':'브라우저에서 Tidal 로그인 후, 주소창의 redirect URL 전체를 복사해서 아래에 붙여넣으세요.',
+        'login.pkceStep1':'① 아래 링크를 클릭해서 Tidal 로그인:',
+        'login.pkceStep2':'② 로그인 완료 → 브라우저에 "Page not found"가 표시됩니다 — 정상입니다. 주소창의 URL 전체를 복사해서 아래에 붙여넣으세요:',
+        'login.pkceSubmit':'확인',
+        'col.title':'제목','col.artist':'아티스트','col.album':'앨범','col.trk':'번호',
+        'col.quality':'품질','col.isrc':'ISRC','col.duration':'재생시간',
+        'fav.noTracks':'즐겨찾는 트랙 없음','fav.noAlbums':'즐겨찾는 앨범 없음',
+        'pl.noTracks':'트랙 없음','search.noTracks':'트랙 없음',
+        'search.noAlbums':'앨범 없음','search.noPlaylists':'플레이리스트 없음',
+        'status.ready':'준비','status.loginSuccess':'로그인 성공','status.loginFail':'로그인 실패',
+        'status.saved':'설정 저장됨','status.saveFail':'저장 실패',
+        'status.dlComplete':'다운로드 완료',
+        'settings.language':'언어',
+        'onboard.tagline':'Tidal 다운로더 — 시작하려면 로그인하세요',
+        'onboard.oauthTitle':'OAuth 로그인','onboard.recommended':'권장',
+        'onboard.oauthDesc':'FLAC Lossless까지 지원합니다. 브라우저가 자동으로 열리고 승인하면 완료됩니다.',
+        'onboard.pkceTitle':'PKCE 로그인','onboard.hiRes':'HiRes Lossless',
+        'onboard.pkceDesc':'HiRes Lossless 품질에 필요합니다. 브라우저 로그인 후 redirect URL을 앱에 붙여넣으세요.',
+        'onboard.footer':'인증 정보는 ~/.tdl/ 에 로컬 저장되며 외부로 전송되지 않습니다.',
+        'sf.audioQuality':'오디오 품질','sf.videoQuality':'비디오 품질',
+        'sf.skipExisting':'기존 파일 건너뜀','sf.dlDelay':'다운로드 딜레이',
+        'sf.delayMin':'최소 딜레이 (s)','sf.delayMax':'최대 딜레이 (s)',
+        'sf.concurrentMax':'최대 동시 다운로드','sf.segPerTrack':'트랙당 세그먼트',
+        'sf.dlPath':'다운로드 경로','sf.ffmpegPath':'FFmpeg 경로',
+        'sf.convertMp4':'MP4 변환','sf.coverSize':'커버 크기',
+        'sf.embedCover':'커버 삽입','sf.coverFile':'커버 파일 저장',
+        'sf.extractFlac':'FLAC 추출','sf.embedLyrics':'가사 삽입',
+        'sf.lyricsFile':'가사 파일 저장','sf.replayGain':'ReplayGain',
+        'sf.createPlaylist':'플레이리스트 생성','sf.trackPad':'트랙 번호 패딩',
+    },
+    de: {
+        _name: 'Deutsch', _flag: '🇩🇪',
+        'nav.download':'Herunterladen','nav.search':'Suchen','nav.library':'Bibliothek',
+        'nav.favorites':'Favoriten','nav.playlists':'Wiedergabelisten','nav.system':'System',
+        'nav.settings':'Einstellungen','nav.account':'Konto',
+        'dl.placeholder':'Tidal-URL einfügen...','dl.download':'Herunterladen',
+        'search.placeholder':'Tidal durchsuchen...','search.btn':'Suchen',
+        'filter.tracks':'Titel','filter.albums':'Alben','filter.playlists':'Wiedergabelisten',
+        'common.dlAll':'Alle herunterladen','common.refresh':'Aktualisieren','common.dl':'DL',
+        'common.back':'←','common.loading':'Laden...','common.searching':'Suche...',
+        'common.noResult':'Keine Ergebnisse','common.failed':'Fehlgeschlagen',
+        'common.dlSelected':'Auswahl herunterladen','common.clear':'Auswahl aufheben',
+        'btn.clear':'Leeren','dl.history':'Verlauf',
+        'panel.noTrack':'Kein Titel ausgewählt','panel.queue':'Download-Warteschlange',
+        'settings.save':'Speichern','settings.theme':'Design',
+        'account.loggedIn':'Angemeldet als','account.notLoggedIn':'Nicht angemeldet',
+        'account.logout':'Abmelden','account.loginOAuth':'Anmelden (OAuth)','account.loginPkce':'Anmelden (PKCE)',
+        'login.title':'Im Browser öffnen','login.desc':'Browser öffnet sich automatisch. Falls nicht, klicke den Link.',
+        'login.close':'Schließen',
+        'col.title':'Titel','col.artist':'Künstler','col.album':'Album','col.trk':'Nr.',
+        'col.quality':'Qualität','col.isrc':'ISRC','col.duration':'Dauer',
+        'fav.noTracks':'Keine Lieblingstitel','fav.noAlbums':'Keine Lieblingsalben',
+        'pl.noTracks':'Keine Titel','search.noTracks':'Keine Titel gefunden',
+        'search.noAlbums':'Keine Alben gefunden','search.noPlaylists':'Keine Wiedergabelisten gefunden',
+        'status.ready':'Bereit','status.loginSuccess':'Anmeldung erfolgreich','status.loginFail':'Anmeldung fehlgeschlagen',
+        'status.saved':'Einstellungen gespeichert','status.saveFail':'Speichern fehlgeschlagen',
+        'status.dlComplete':'Download abgeschlossen',
+    },
+    fr: {
+        _name: 'Français', _flag: '🇫🇷',
+        'nav.download':'Télécharger','nav.search':'Rechercher','nav.library':'Bibliothèque',
+        'nav.favorites':'Favoris','nav.playlists':'Listes de lecture','nav.system':'Système',
+        'nav.settings':'Paramètres','nav.account':'Compte',
+        'dl.placeholder':'Coller l\'URL Tidal...','dl.download':'Télécharger',
+        'search.placeholder':'Rechercher sur Tidal...','search.btn':'Rechercher',
+        'filter.tracks':'Titres','filter.albums':'Albums','filter.playlists':'Listes de lecture',
+        'common.dlAll':'Tout télécharger','common.refresh':'Actualiser','common.dl':'DL',
+        'common.back':'←','common.loading':'Chargement...','common.searching':'Recherche...',
+        'common.noResult':'Aucun résultat','common.failed':'Échec',
+        'common.dlSelected':'Télécharger la sélection','common.clear':'Effacer la sélection',
+        'btn.clear':'Effacer','dl.history':'Historique',
+        'panel.noTrack':'Aucun titre sélectionné','panel.queue':'File de téléchargement',
+        'settings.save':'Enregistrer','settings.theme':'Thème',
+        'account.loggedIn':'Connecté en tant que','account.notLoggedIn':'Non connecté',
+        'account.logout':'Déconnexion','account.loginOAuth':'Connexion (OAuth)','account.loginPkce':'Connexion (PKCE)',
+        'login.title':'Ouvrir dans le navigateur','login.desc':'Le navigateur s\'ouvre automatiquement. Sinon, cliquez le lien.',
+        'login.close':'Fermer',
+        'col.title':'Titre','col.artist':'Artiste','col.album':'Album','col.trk':'N°',
+        'col.quality':'Qualité','col.isrc':'ISRC','col.duration':'Durée',
+        'fav.noTracks':'Aucun titre favori','fav.noAlbums':'Aucun album favori',
+        'pl.noTracks':'Aucun titre','search.noTracks':'Aucun titre trouvé',
+        'search.noAlbums':'Aucun album trouvé','search.noPlaylists':'Aucune liste trouvée',
+        'status.ready':'Prêt','status.loginSuccess':'Connexion réussie','status.loginFail':'Échec de connexion',
+        'status.saved':'Paramètres enregistrés','status.saveFail':'Échec de sauvegarde',
+        'status.dlComplete':'Téléchargement terminé',
+    },
+    ja: {
+        _name: '日本語', _flag: '🇯🇵',
+        'nav.download':'ダウンロード','nav.search':'検索','nav.library':'ライブラリ',
+        'nav.favorites':'お気に入り','nav.playlists':'プレイリスト','nav.system':'システム',
+        'nav.settings':'設定','nav.account':'アカウント',
+        'dl.placeholder':'Tidal URLを貼り付け...','dl.download':'ダウンロード',
+        'search.placeholder':'Tidalを検索...','search.btn':'検索',
+        'filter.tracks':'トラック','filter.albums':'アルバム','filter.playlists':'プレイリスト',
+        'common.dlAll':'すべてダウンロード','common.refresh':'更新','common.dl':'DL',
+        'common.back':'←','common.loading':'読み込み中...','common.searching':'検索中...',
+        'common.noResult':'結果なし','common.failed':'失敗',
+        'common.dlSelected':'選択してダウンロード','common.clear':'選択解除',
+        'btn.clear':'クリア','dl.history':'履歴',
+        'panel.noTrack':'トラック未選択','panel.queue':'ダウンロードキュー',
+        'settings.save':'保存','settings.theme':'テーマ',
+        'account.loggedIn':'ログイン済み（ユーザー）','account.notLoggedIn':'未ログイン',
+        'account.logout':'ログアウト','account.loginOAuth':'ログイン (OAuth)','account.loginPkce':'ログイン (PKCE)',
+        'login.title':'ブラウザで開く','login.desc':'ブラウザが自動的に開きます。開かない場合はリンクをクリックしてください。',
+        'login.close':'閉じる',
+        'col.title':'タイトル','col.artist':'アーティスト','col.album':'アルバム','col.trk':'番号',
+        'col.quality':'品質','col.isrc':'ISRC','col.duration':'再生時間',
+        'fav.noTracks':'お気に入りのトラックなし','fav.noAlbums':'お気に入りのアルバムなし',
+        'pl.noTracks':'トラックなし','search.noTracks':'トラックが見つかりません',
+        'search.noAlbums':'アルバムが見つかりません','search.noPlaylists':'プレイリストが見つかりません',
+        'status.ready':'準備完了','status.loginSuccess':'ログイン成功','status.loginFail':'ログイン失敗',
+        'status.saved':'設定を保存しました','status.saveFail':'保存に失敗しました',
+        'status.dlComplete':'ダウンロード完了',
+    },
+    pt: {
+        _name: 'Português', _flag: '🇧🇷',
+        'nav.download':'Baixar','nav.search':'Pesquisar','nav.library':'Biblioteca',
+        'nav.favorites':'Favoritos','nav.playlists':'Listas de reprodução','nav.system':'Sistema',
+        'nav.settings':'Configurações','nav.account':'Conta',
+        'dl.placeholder':'Colar URL do Tidal...','dl.download':'Baixar',
+        'search.placeholder':'Pesquisar no Tidal...','search.btn':'Pesquisar',
+        'filter.tracks':'Faixas','filter.albums':'Álbuns','filter.playlists':'Listas',
+        'common.dlAll':'Baixar tudo','common.refresh':'Atualizar','common.dl':'DL',
+        'common.back':'←','common.loading':'Carregando...','common.searching':'Pesquisando...',
+        'common.noResult':'Nenhum resultado','common.failed':'Falhou',
+        'common.dlSelected':'Baixar selecionados','common.clear':'Limpar seleção',
+        'btn.clear':'Limpar','dl.history':'Histórico',
+        'panel.noTrack':'Nenhuma faixa selecionada','panel.queue':'Fila de download',
+        'settings.save':'Salvar','settings.theme':'Tema',
+        'account.loggedIn':'Conectado como','account.notLoggedIn':'Não conectado',
+        'account.logout':'Sair','account.loginOAuth':'Entrar (OAuth)','account.loginPkce':'Entrar (PKCE)',
+        'login.title':'Abrir no navegador','login.desc':'O navegador abrirá automaticamente. Caso contrário, clique no link.',
+        'login.close':'Fechar',
+        'col.title':'Título','col.artist':'Artista','col.album':'Álbum','col.trk':'N°',
+        'col.quality':'Qualidade','col.isrc':'ISRC','col.duration':'Duração',
+        'fav.noTracks':'Sem faixas favoritas','fav.noAlbums':'Sem álbuns favoritos',
+        'pl.noTracks':'Sem faixas','search.noTracks':'Nenhuma faixa encontrada',
+        'search.noAlbums':'Nenhum álbum encontrado','search.noPlaylists':'Nenhuma lista encontrada',
+        'status.ready':'Pronto','status.loginSuccess':'Login bem-sucedido','status.loginFail':'Falha no login',
+        'status.saved':'Configurações salvas','status.saveFail':'Falha ao salvar',
+        'status.dlComplete':'Download concluído',
+    },
+    es: {
+        _name: 'Español', _flag: '🇲🇽',
+        'nav.download':'Descargar','nav.search':'Buscar','nav.library':'Biblioteca',
+        'nav.favorites':'Favoritos','nav.playlists':'Listas de reproducción','nav.system':'Sistema',
+        'nav.settings':'Ajustes','nav.account':'Cuenta',
+        'dl.placeholder':'Pegar URL de Tidal...','dl.download':'Descargar',
+        'search.placeholder':'Buscar en Tidal...','search.btn':'Buscar',
+        'filter.tracks':'Pistas','filter.albums':'Álbumes','filter.playlists':'Listas',
+        'common.dlAll':'Descargar todo','common.refresh':'Actualizar','common.dl':'DL',
+        'common.back':'←','common.loading':'Cargando...','common.searching':'Buscando...',
+        'common.noResult':'Sin resultados','common.failed':'Error',
+        'common.dlSelected':'Descargar selección','common.clear':'Deseleccionar',
+        'btn.clear':'Borrar','dl.history':'Historial',
+        'panel.noTrack':'Ninguna pista seleccionada','panel.queue':'Cola de descarga',
+        'settings.save':'Guardar','settings.theme':'Tema',
+        'account.loggedIn':'Conectado como','account.notLoggedIn':'No conectado',
+        'account.logout':'Cerrar sesión','account.loginOAuth':'Iniciar sesión (OAuth)','account.loginPkce':'Iniciar sesión (PKCE)',
+        'login.title':'Abrir en el navegador','login.desc':'El navegador se abrirá automáticamente. Si no, haz clic en el enlace.',
+        'login.close':'Cerrar',
+        'col.title':'Título','col.artist':'Artista','col.album':'Álbum','col.trk':'N°',
+        'col.quality':'Calidad','col.isrc':'ISRC','col.duration':'Duración',
+        'fav.noTracks':'Sin pistas favoritas','fav.noAlbums':'Sin álbumes favoritos',
+        'pl.noTracks':'Sin pistas','search.noTracks':'No se encontraron pistas',
+        'search.noAlbums':'No se encontraron álbumes','search.noPlaylists':'No se encontraron listas',
+        'status.ready':'Listo','status.loginSuccess':'Inicio de sesión exitoso','status.loginFail':'Error de inicio de sesión',
+        'status.saved':'Ajustes guardados','status.saveFail':'Error al guardar',
+        'status.dlComplete':'Descarga completada',
+    },
+    sv: {
+        _name: 'Svenska', _flag: '🇸🇪',
+        'nav.download':'Ladda ner','nav.search':'Sök','nav.library':'Bibliotek',
+        'nav.favorites':'Favoriter','nav.playlists':'Spellistor','nav.system':'System',
+        'nav.settings':'Inställningar','nav.account':'Konto',
+        'dl.placeholder':'Klistra in Tidal-URL...','dl.download':'Ladda ner',
+        'search.placeholder':'Sök på Tidal...','search.btn':'Sök',
+        'filter.tracks':'Låtar','filter.albums':'Album','filter.playlists':'Spellistor',
+        'common.dlAll':'Ladda ner allt','common.refresh':'Uppdatera','common.dl':'DL',
+        'common.back':'←','common.loading':'Laddar...','common.searching':'Söker...',
+        'common.noResult':'Inga resultat','common.failed':'Misslyckades',
+        'common.dlSelected':'Ladda ner valda','common.clear':'Avmarkera',
+        'btn.clear':'Rensa','dl.history':'Historik',
+        'panel.noTrack':'Ingen låt vald','panel.queue':'Nedladdningskö',
+        'settings.save':'Spara','settings.theme':'Tema',
+        'account.loggedIn':'Inloggad som','account.notLoggedIn':'Inte inloggad',
+        'account.logout':'Logga ut','account.loginOAuth':'Logga in (OAuth)','account.loginPkce':'Logga in (PKCE)',
+        'login.title':'Öppna i webbläsare','login.desc':'Webbläsaren öppnas automatiskt. Annars, klicka på länken.',
+        'login.close':'Stäng',
+        'col.title':'Titel','col.artist':'Artist','col.album':'Album','col.trk':'Nr',
+        'col.quality':'Kvalitet','col.isrc':'ISRC','col.duration':'Längd',
+        'fav.noTracks':'Inga favoritlåtar','fav.noAlbums':'Inga favoritalbum',
+        'pl.noTracks':'Inga låtar','search.noTracks':'Inga låtar hittades',
+        'search.noAlbums':'Inga album hittades','search.noPlaylists':'Inga spellistor hittades',
+        'status.ready':'Redo','status.loginSuccess':'Inloggning lyckades','status.loginFail':'Inloggning misslyckades',
+        'status.saved':'Inställningar sparade','status.saveFail':'Kunde inte spara',
+        'status.dlComplete':'Nedladdning klar',
+    },
+    no: {
+        _name: 'Norsk', _flag: '🇳🇴',
+        'nav.download':'Last ned','nav.search':'Søk','nav.library':'Bibliotek',
+        'nav.favorites':'Favoritter','nav.playlists':'Spillelister','nav.system':'System',
+        'nav.settings':'Innstillinger','nav.account':'Konto',
+        'dl.placeholder':'Lim inn Tidal-URL...','dl.download':'Last ned',
+        'search.placeholder':'Søk på Tidal...','search.btn':'Søk',
+        'filter.tracks':'Låter','filter.albums':'Album','filter.playlists':'Spillelister',
+        'common.dlAll':'Last ned alle','common.refresh':'Oppdater','common.dl':'DL',
+        'common.back':'←','common.loading':'Laster...','common.searching':'Søker...',
+        'common.noResult':'Ingen resultater','common.failed':'Mislyktes',
+        'common.dlSelected':'Last ned valgte','common.clear':'Fjern valg',
+        'btn.clear':'Tøm','dl.history':'Historikk',
+        'panel.noTrack':'Ingen låt valgt','panel.queue':'Nedlastingskø',
+        'settings.save':'Lagre','settings.theme':'Tema',
+        'account.loggedIn':'Logget inn som','account.notLoggedIn':'Ikke logget inn',
+        'account.logout':'Logg ut','account.loginOAuth':'Logg inn (OAuth)','account.loginPkce':'Logg inn (PKCE)',
+        'login.title':'Åpne i nettleser','login.desc':'Nettleseren åpnes automatisk. Ellers klikk på lenken.',
+        'login.close':'Lukk',
+        'col.title':'Tittel','col.artist':'Artist','col.album':'Album','col.trk':'Nr',
+        'col.quality':'Kvalitet','col.isrc':'ISRC','col.duration':'Varighet',
+        'fav.noTracks':'Ingen favorittlåter','fav.noAlbums':'Ingen favorittalbum',
+        'pl.noTracks':'Ingen låter','search.noTracks':'Ingen låter funnet',
+        'search.noAlbums':'Ingen album funnet','search.noPlaylists':'Ingen spillelister funnet',
+        'status.ready':'Klar','status.loginSuccess':'Innlogging vellykket','status.loginFail':'Innlogging mislyktes',
+        'status.saved':'Innstillinger lagret','status.saveFail':'Kunne ikke lagre',
+        'status.dlComplete':'Nedlasting fullført',
+    },
+    zh: {
+        _name: '中文', _flag: '🇨🇳',
+        'nav.download':'下载','nav.search':'搜索','nav.library':'资料库',
+        'nav.favorites':'收藏','nav.playlists':'播放列表','nav.system':'系统',
+        'nav.settings':'设置','nav.account':'账户',
+        'dl.placeholder':'粘贴 Tidal 链接...','dl.download':'下载',
+        'search.placeholder':'搜索 Tidal...','search.btn':'搜索',
+        'filter.tracks':'曲目','filter.albums':'专辑','filter.playlists':'播放列表',
+        'common.dlAll':'全部下载','common.refresh':'刷新','common.dl':'DL',
+        'common.back':'←','common.loading':'加载中...','common.searching':'搜索中...',
+        'common.noResult':'无结果','common.failed':'失败',
+        'common.dlSelected':'下载所选','common.clear':'取消选择',
+        'btn.clear':'清除','dl.history':'历史记录',
+        'panel.noTrack':'未选择曲目','panel.queue':'下载队列',
+        'settings.save':'保存','settings.theme':'主题',
+        'account.loggedIn':'已登录为','account.notLoggedIn':'未登录',
+        'account.logout':'退出登录','account.loginOAuth':'登录 (OAuth)','account.loginPkce':'登录 (PKCE)',
+        'login.title':'在浏览器中打开','login.desc':'浏览器将自动打开。如未打开，请点击下方链接。',
+        'login.close':'关闭',
+        'col.title':'标题','col.artist':'艺术家','col.album':'专辑','col.trk':'编号',
+        'col.quality':'品质','col.isrc':'ISRC','col.duration':'时长',
+        'fav.noTracks':'没有收藏的曲目','fav.noAlbums':'没有收藏的专辑',
+        'pl.noTracks':'没有曲目','search.noTracks':'未找到曲目',
+        'search.noAlbums':'未找到专辑','search.noPlaylists':'未找到播放列表',
+        'status.ready':'就绪','status.loginSuccess':'登录成功','status.loginFail':'登录失败',
+        'status.saved':'设置已保存','status.saveFail':'保存失败',
+        'status.dlComplete':'下载完成',
+    },
+};
+
+let currentLang = localStorage.getItem('tdl-lang') || 'en';
+
+function t(key) {
+    return LOCALES[currentLang]?.[key] ?? LOCALES.en[key] ?? key;
+}
+
+function applyLang(lang) {
+    currentLang = lang;
+    localStorage.setItem('tdl-lang', lang);
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+    });
+    document.querySelectorAll('.lang-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.lang === lang);
+    });
+    const sel = document.getElementById('onboard-lang-select');
+    if (sel) sel.value = lang;
+    setStatus(t('status.ready'));
+}
+
+function initOnboardLangSelect() {
+    const sel = document.getElementById('onboard-lang-select');
+    if (!sel) return;
+    Object.entries(LOCALES).forEach(([id, loc]) => {
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = loc._flag + ' ' + loc._name;
+        if (id === currentLang) opt.selected = true;
+        sel.appendChild(opt);
+    });
+}
+
+function renderLangPicker(container) {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    row.innerHTML = `<div class="s-label">${t('settings.language')}</div><div class="s-value"><div class="theme-grid">
+        ${Object.entries(LOCALES).map(([id, loc]) =>
+            `<button class="lang-btn theme-swatch${id === currentLang ? ' active' : ''}" data-lang="${id}" onclick="applyLang('${id}')" title="${loc._name}">${loc._flag} ${loc._name}</button>`
+        ).join('')}
+    </div></div>`;
+    container.insertBefore(row, container.firstChild);
+}
+
+// ── Theme ────────────────────────────────────────────────────
+const THEMES = [
+    { id:'dark',      label:'Dark (default)' },
+    { id:'light',     label:'Light' },
+    { id:'amoled',    label:'AMOLED Black' },
+    { id:'nord',      label:'Nord' },
+    { id:'dracula',   label:'Dracula' },
+    { id:'solarized', label:'Solarized Dark' },
+    { id:'monokai',   label:'Monokai' },
+    { id:'rose',      label:'Rosé Pine' },
+    { id:'gruvbox',   label:'Gruvbox' },
+    { id:'tokyo',     label:'Tokyo Night' },
 ];
+
+function applyTheme(id) {
+    document.documentElement.setAttribute('data-theme', id);
+    localStorage.setItem('tdl-theme', id);
+    document.querySelectorAll('.theme-swatch').forEach(s => {
+        s.classList.toggle('active', s.dataset.theme === id);
+    });
+}
+
+function initTheme() {
+    const saved = localStorage.getItem('tdl-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', saved);
+}
+initTheme();
+
+function renderThemePicker(container) {
+    const current = localStorage.getItem('tdl-theme') || 'dark';
+    container.innerHTML = `
+    <div class="settings-row">
+        <div class="s-label">${t('settings.theme')}</div>
+        <div class="s-value">
+            <div class="theme-grid">
+                ${THEMES.map(t => `
+                <button class="theme-swatch${t.id === current ? ' active' : ''}"
+                    data-theme="${t.id}" onclick="applyTheme('${t.id}')"
+                    title="${t.label}">${t.label}</button>`).join('')}
+            </div>
+        </div>
+    </div>` + container.innerHTML;
+}
+
+const settingsFields = [
+    { key:'quality_audio', lk:'sf.audioQuality', type:'enum', options:['low_96k','low_320k','high_lossless','hi_res_lossless'] },
+    { key:'quality_video', lk:'sf.videoQuality', type:'enum', options:['p360','p480','p720','p1080'] },
+    { key:'skip_existing', lk:'sf.skipExisting', type:'bool' },
+    { key:'download_delay', lk:'sf.dlDelay', type:'bool' },
+    { key:'download_delay_sec_min', lk:'sf.delayMin', type:'number' },
+    { key:'download_delay_sec_max', lk:'sf.delayMax', type:'number' },
+    { key:'downloads_concurrent_max', lk:'sf.concurrentMax', type:'number' },
+    { key:'downloads_simultaneous_per_track_max', lk:'sf.segPerTrack', type:'number' },
+    { key:'download_base_path', lk:'sf.dlPath', type:'text' },
+    { key:'path_binary_ffmpeg', lk:'sf.ffmpegPath', type:'text' },
+    { key:'video_convert_mp4', lk:'sf.convertMp4', type:'bool' },
+    { key:'metadata_cover_dimension', lk:'sf.coverSize', type:'enum', options:['px80','px160','px320','px640','px1280'] },
+    { key:'metadata_cover_embed', lk:'sf.embedCover', type:'bool' },
+    { key:'cover_album_file', lk:'sf.coverFile', type:'bool' },
+    { key:'extract_flac', lk:'sf.extractFlac', type:'bool' },
+    { key:'lyrics_embed', lk:'sf.embedLyrics', type:'bool' },
+    { key:'lyrics_file', lk:'sf.lyricsFile', type:'bool' },
+    { key:'metadata_replay_gain', lk:'sf.replayGain', type:'bool' },
+    { key:'playlist_create', lk:'sf.createPlaylist', type:'bool' },
+    { key:'album_track_num_pad_min', lk:'sf.trackPad', type:'number' },
+];
+
+function updateQualityBadges(settings) {
+    const audioMap = { low_96k:'96k', low_320k:'320k', high_lossless:'FLAC', hi_res_lossless:'HiRes' };
+    const videoMap = { p360:'360p', p480:'480p', p720:'720p', p1080:'1080p' };
+    const aq = document.getElementById('sb-audio-qual');
+    const vq = document.getElementById('sb-video-qual');
+    if (aq) aq.textContent = '♪ ' + (audioMap[settings.quality_audio] || settings.quality_audio || '—');
+    if (vq) vq.textContent = '▶ ' + (videoMap[settings.quality_video] || settings.quality_video || '—');
+}
 
 async function loadSettings() {
     const settings = await invoke('get_settings');
     const body = document.getElementById('settings-body');
     body.innerHTML = '';
+    updateQualityBadges(settings);
+    renderLangPicker(body);
+    renderThemePicker(body);
     settingsFields.forEach(f => {
         const row = document.createElement('div');
         row.className = 'settings-row';
-        row.innerHTML = `<div class="s-label">${f.label}</div><div class="s-value"></div>`;
+        row.innerHTML = `<div class="s-label">${t(f.lk)}</div><div class="s-value"></div>`;
         const val = row.querySelector('.s-value');
         if (f.type === 'bool') {
             val.innerHTML = `<label class="toggle"><input type="checkbox" data-key="${f.key}" ${settings[f.key]?'checked':''}><span class="slider"></span></label>`;
@@ -774,6 +1676,7 @@ async function saveSettings() {
     });
     try {
         await invoke('save_settings', { settings });
+        updateQualityBadges(settings);
         setStatus('Settings saved');
     } catch (e) {
         setStatus('Save failed: ' + e);
@@ -782,53 +1685,132 @@ async function saveSettings() {
 }
 
 // ---- Account ----
+function loginMethodCards() {
+    return `
+    <div class="login-method-card" onclick="doLogin()">
+        <div class="login-method-header">
+            <span>${t('account.loginOAuth')}</span>
+            <span class="onboard-method-badge">${t('onboard.recommended')}</span>
+        </div>
+        <div class="login-method-desc">${t('onboard.oauthDesc')}</div>
+    </div>
+    <div class="login-method-card" onclick="doLoginPkce()">
+        <div class="login-method-header">
+            <span>${t('account.loginPkce')}</span>
+            <span class="onboard-method-badge" style="background:var(--accent2)">${t('onboard.hiRes')}</span>
+        </div>
+        <div class="login-method-desc">${t('onboard.pkceDesc')}</div>
+    </div>`;
+}
+
+function setOnboard(show) {
+    document.getElementById('onboard-overlay').classList.toggle('visible', show);
+}
+
 async function loadAccount() {
     const body = document.getElementById('account-body');
     try {
         const status = await invoke('get_login_status');
         const on = status.logged_in;
+        const loginMethod = localStorage.getItem('tdl-login-method') || '';
+        const methodBadge = on && loginMethod
+            ? `<span class="sb-badge" style="font-size:11px;padding:2px 8px">${loginMethod}</span>` : '';
         document.getElementById('status-dot').className = 'dot' + (on ? '' : ' off');
+        setOnboard(!on);
         body.innerHTML = `<div class="account-card">
             <div class="account-status">
                 <span class="dot ${on?'on':'off'}"></span>
-                <span>${on ? 'Logged in as user ' + (status.user_id || '') : 'Not logged in'}</span>
+                <span>${on ? (t('account.loggedIn') + ' ' + (status.user_id || '')) : t('account.notLoggedIn')}</span>
+                ${methodBadge}
             </div>
             <div class="account-actions">
-                ${on ? '<button class="btn btn-danger" onclick="doLogout()">Logout</button>' : '<button class="btn" onclick="doLogin()">Login (OAuth)</button><button class="btn" onclick="doLoginPkce()">Login (PKCE)</button>'}
+                ${on
+                    ? `<button class="btn btn-danger" onclick="doLogout()">${t('account.logout')}</button>`
+                    : loginMethodCards()}
             </div>
         </div>`;
     } catch {
         document.getElementById('status-dot').className = 'dot off';
+        setOnboard(true);
         body.innerHTML = `<div class="account-card">
-            <div class="account-status"><span class="dot off"></span><span>Not logged in</span></div>
-            <div class="account-actions">
-                <button class="btn" onclick="doLogin()">Login (OAuth)</button>
-                <button class="btn" onclick="doLoginPkce()">Login (PKCE)</button>
-            </div>
+            <div class="account-status"><span class="dot off"></span><span>${t('account.notLoggedIn')}</span></div>
+            <div class="account-actions">${loginMethodCards()}</div>
         </div>`;
     }
 }
 
+function openLoginModal(url) {
+    const link = document.getElementById('login-modal-link');
+    link.href = url;
+    link.textContent = url;
+    document.getElementById('login-modal-overlay').classList.add('visible');
+}
+function closeLoginModal() {
+    document.getElementById('login-modal-overlay').classList.remove('visible');
+}
+
 async function doLogin() {
-    setStatus('Logging in... (check terminal for URL)');
-    try { await invoke('login'); setStatus('Login successful'); }
-    catch (e) { setStatus('Login failed: ' + e); }
+    setStatus(t('status.loggingIn') || 'Logging in...');
+    try {
+        await invoke('login');
+        localStorage.setItem('tdl-login-method', 'OAuth');
+        setStatus(t('status.loginSuccess'));
+        closeLoginModal();
+    } catch (e) {
+        setStatus(t('status.loginFail') + ': ' + e);
+        closeLoginModal();
+    }
     loadAccount();
 }
 async function doLoginPkce() {
-    setStatus('PKCE login... (check terminal)');
-    try { await invoke('login'); setStatus('Login successful'); }
-    catch (e) { setStatus('Login failed: ' + e); }
-    loadAccount();
+    setStatus('Starting PKCE login...');
+    try {
+        const authUrl = await invoke('login_pkce_start');
+        openPkceModal(authUrl);
+    } catch (e) {
+        setStatus(t('status.loginFail') + ': ' + e);
+    }
+}
+
+function openPkceModal(authUrl) {
+    const link = document.getElementById('pkce-modal-link');
+    link.href = authUrl;
+    link.textContent = authUrl;
+    document.getElementById('pkce-redirect-input').value = '';
+    document.getElementById('pkce-modal-overlay').style.display = 'flex';
+}
+
+function closePkceModal() {
+    document.getElementById('pkce-modal-overlay').style.display = 'none';
+}
+
+async function submitPkce() {
+    const redirectUrl = document.getElementById('pkce-redirect-input').value.trim();
+    if (!redirectUrl) { alert('Please paste the redirect URL.'); return; }
+    setStatus('Exchanging PKCE token...');
+    try {
+        await invoke('login_pkce_submit', { redirectUrl });
+        localStorage.setItem('tdl-login-method', 'PKCE');
+        setStatus(t('status.loginSuccess'));
+        closePkceModal();
+        loadAccount();
+    } catch (e) {
+        setStatus(t('status.loginFail') + ': ' + e);
+    }
 }
 async function doLogout() {
     await invoke('logout');
+    localStorage.removeItem('tdl-login-method');
     setStatus('Logged out');
     loadAccount();
 }
 
-// ---- Event listeners (download progress) ----
+// ---- Event listeners ----
 if (listen) {
+    listen('login-url', e => {
+        openLoginModal(e.payload.url);
+    });
+
     listen('download-start', e => {
         const p = e.payload;
         setStatus(`Downloading: ${p.url} (${p.total || 1} items)`);
@@ -847,7 +1829,10 @@ if (listen) {
 }
 
 // ---- Init ----
+initOnboardLangSelect();
 loadAccount();
+applyLang(currentLang);
+invoke('get_settings').then(s => updateQualityBadges(s)).catch(() => {});
 </script>
 </body>
 </html>

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::process::Command;
 use tokio::sync::Mutex;
 use tauri::{Emitter, State};
 
@@ -9,8 +10,15 @@ use crate::tidal::media::MediaType;
 use crate::tidal::search;
 use crate::tidal::session::TidalSession;
 
+struct PkceState {
+    session: TidalSession,
+    code_verifier: String,
+    client_unique_key: String,
+}
+
 pub struct AppState {
     pub session: Arc<Mutex<Option<Arc<Mutex<TidalSession>>>>>,
+    pkce: Arc<Mutex<Option<PkceState>>>,
 }
 
 async fn ensure_session(
@@ -72,15 +80,33 @@ async fn get_login_status() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-async fn login(state: State<'_, AppState>) -> Result<(), String> {
+async fn login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let settings = Settings::load().map_err(|e| e.to_string())?;
     let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
-    session.login().await.map_err(|e| e.to_string())?;
+    session
+        .login_with_url_handler(|url, code| {
+            eprintln!("[tdl-gui] login url_handler called: {}", url);
+            let emit_result = app.emit("login-url", serde_json::json!({ "url": url, "code": code }));
+            eprintln!("[tdl-gui] emit result: {:?}", emit_result);
+            let _ = open_url(url);
+        })
+        .await
+        .map_err(|e| e.to_string())?;
     let session = Arc::new(Mutex::new(session));
     {
         let mut guard = state.session.lock().await;
         *guard = Some(session);
     }
+    Ok(())
+}
+
+fn open_url(url: &str) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    Command::new("open").arg(url).spawn()?.wait().map(|_| ())?;
+    #[cfg(target_os = "linux")]
+    Command::new("xdg-open").arg(url).spawn()?.wait().map(|_| ())?;
+    #[cfg(target_os = "windows")]
+    Command::new("cmd").args(["/c", "start", "", url]).spawn()?.wait().map(|_| ())?;
     Ok(())
 }
 
@@ -91,6 +117,46 @@ async fn logout(state: State<'_, AppState>) -> Result<(), String> {
         *guard = None;
     }
     Token::delete().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn login_pkce_start(
+    _app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+    let session = TidalSession::new(settings).map_err(|e| e.to_string())?;
+    let (auth_url, code_verifier, client_unique_key) = session.pkce_build_auth_url();
+
+    {
+        let mut guard = state.pkce.lock().await;
+        *guard = Some(PkceState { session, code_verifier, client_unique_key });
+    }
+
+    let _ = open_url(&auth_url);
+    Ok(auth_url)
+}
+
+#[tauri::command]
+async fn login_pkce_submit(
+    state: State<'_, AppState>,
+    redirect_url: String,
+) -> Result<(), String> {
+    let mut pkce_guard = state.pkce.lock().await;
+    let pkce = pkce_guard.take().ok_or("PKCE login not started")?;
+
+    let PkceState { mut session, code_verifier, client_unique_key } = pkce;
+    session
+        .pkce_exchange_code(&redirect_url, &code_verifier, &client_unique_key)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let session = Arc::new(Mutex::new(session));
+    {
+        let mut guard = state.session.lock().await;
+        *guard = Some(session);
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +261,19 @@ async fn get_mix_items(
         .await
         .map_err(|e| e.to_string())?;
     serde_json::to_value(&tracks).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_artist_albums(
+    state: State<'_, AppState>,
+    artist_id: u64,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let albums = search::get_artist_albums(&sess.request, artist_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::to_value(&albums).map_err(|e| e.to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -356,6 +435,7 @@ pub fn run_gui() {
     tauri::Builder::default()
         .manage(AppState {
             session: Arc::new(Mutex::new(None)),
+            pkce: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
             get_settings,
@@ -363,6 +443,8 @@ pub fn run_gui() {
             get_login_status,
             login,
             logout,
+            login_pkce_start,
+            login_pkce_submit,
             search_media,
             get_favorite_tracks,
             get_favorite_albums,
@@ -370,6 +452,7 @@ pub fn run_gui() {
             get_album_tracks,
             get_playlist_tracks,
             get_mix_items,
+            get_artist_albums,
             download_url,
         ])
         .run(tauri::generate_context!())

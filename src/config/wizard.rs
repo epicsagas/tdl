@@ -100,8 +100,12 @@ pub fn run(current: &Settings) -> Result<Settings> {
     .with_default(current.symlink_to_track)
     .prompt()?;
 
-    let playlist_create = Confirm::new("Create .m3u playlist files?")
-        .with_default(current.playlist_create)
+    let playlist_folder = Confirm::new("Save playlists/mixes under Playlists/ folder (also generates .m3u)?")
+        .with_default(current.playlist_folder)
+        .prompt()?;
+
+    let track_num_pad_zero = Confirm::new("Zero-pad track numbers (e.g. 01, 02)?")
+        .with_default(current.track_num_pad_zero)
         .prompt()?;
 
     let metadata_replay_gain = Confirm::new("Write ReplayGain metadata?")
@@ -119,13 +123,6 @@ pub fn run(current: &Settings) -> Result<Settings> {
             .with_default(current.downloads_simultaneous_per_track_max)
             .with_error_message("Enter a positive number")
             .prompt()?;
-
-    let album_track_num_pad_min = CustomType::<u32>::new(
-        "Min track number padding (1=no pad, 2=01, 3=001, 4=0001):",
-    )
-    .with_default(current.album_track_num_pad_min)
-    .with_error_message("Enter 1-4")
-    .prompt()?;
 
     let download_delay_sec_min = CustomType::<f64>::new("Min download delay (seconds):")
         .with_default(current.download_delay_sec_min)
@@ -147,33 +144,6 @@ pub fn run(current: &Settings) -> Result<Settings> {
         .with_default(&current.path_binary_ffmpeg)
         .prompt()?;
 
-    // --- Format templates ---
-    println!("\n--- Path Templates ---");
-    println!("Available: {{artist_name}}, {{album_artist}}, {{track_title}}, {{album_title}},");
-    println!("  {{album_track_num}}, {{track_volume_num}}, {{track_volume_num_optional_CD}},");
-    println!("  {{track_id}}, {{album_id}}, {{track_quality}}, {{track_explicit}},");
-    println!("  {{album_explicit}}, {{isrc}}, {{album_year}}\n");
-
-    let format_album = Text::new("Album path template:")
-        .with_default(&current.format_album)
-        .prompt()?;
-
-    let format_playlist = Text::new("Playlist path template:")
-        .with_default(&current.format_playlist)
-        .prompt()?;
-
-    let format_mix = Text::new("Mix path template:")
-        .with_default(&current.format_mix)
-        .prompt()?;
-
-    let format_track = Text::new("Track path template:")
-        .with_default(&current.format_track)
-        .prompt()?;
-
-    let format_video = Text::new("Video path template:")
-        .with_default(&current.format_video)
-        .prompt()?;
-
     let new_settings = Settings {
         skip_existing,
         lyrics_embed,
@@ -183,11 +153,8 @@ pub fn run(current: &Settings) -> Result<Settings> {
         download_base_path,
         quality_audio,
         quality_video,
-        format_album,
-        format_playlist,
-        format_mix,
-        format_track,
-        format_video,
+        track_num_pad_zero,
+        playlist_folder,
         video_convert_mp4,
         path_binary_ffmpeg,
         metadata_cover_dimension,
@@ -197,10 +164,8 @@ pub fn run(current: &Settings) -> Result<Settings> {
         downloads_simultaneous_per_track_max,
         download_delay_sec_min,
         download_delay_sec_max,
-        album_track_num_pad_min,
         downloads_concurrent_max,
         symlink_to_track,
-        playlist_create,
         metadata_replay_gain,
     };
 

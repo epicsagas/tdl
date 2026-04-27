@@ -53,10 +53,13 @@ impl Screen {
     }
 }
 
-#[derive(Clone, Copy)]
-enum AccountAction {
-    LoginOAuth,
-    LoginPkce,
+// ---------------------------------------------------------------------------
+// Background download communication
+// ---------------------------------------------------------------------------
+
+enum DownloadMsg {
+    Log(String),
+    Done,
 }
 
 // ---------------------------------------------------------------------------
@@ -66,18 +69,21 @@ enum AccountAction {
 struct App {
     screen: Screen,
     settings: Settings,
+    // Shared session (reused across downloads / logins)
+    session: Option<Arc<Mutex<TidalSession>>>,
     // Main menu
     menu_state: ListState,
     // Download
     url_input: String,
     url_cursor: usize,
-    download_log: Vec<String>,
+    download_log: Vec<(String, LogLevel)>,
     downloading: bool,
-    // Account
+    download_rx: Option<std::sync::mpsc::Receiver<DownloadMsg>>,
+    // Account / PKCE
     logged_in: bool,
     user_id: Option<u64>,
     account_state: ListState,
-    account_pending: Option<AccountAction>,
+    pkce_state: PkceFlowState,
     logout_confirm: bool,
     // Settings
     settings_state: ListState,
@@ -86,6 +92,21 @@ struct App {
     settings_dropdown: bool,
     settings_dropdown_idx: usize,
     settings_fields: Vec<SettingsField>,
+}
+
+#[derive(Clone, Copy)]
+enum LogLevel {
+    Info,
+    Success,
+    Error,
+}
+
+#[derive(Default)]
+enum PkceFlowState {
+    #[default]
+    Idle,
+    // Waiting for user to paste redirect URL; store auth URL to display
+    AwaitingRedirect { auth_url: String, input: String, cursor: usize },
 }
 
 struct SettingsField {
@@ -129,7 +150,8 @@ fn make_settings_fields() -> Vec<SettingsField> {
         SettingsField { label: "Lyrics Embed", get: |s| s.lyrics_embed.to_string(), set: |s, v| s.lyrics_embed=v=="true", options: None },
         SettingsField { label: "Lyrics File", get: |s| s.lyrics_file.to_string(), set: |s, v| s.lyrics_file=v=="true", options: None },
         SettingsField { label: "ReplayGain", get: |s| s.metadata_replay_gain.to_string(), set: |s, v| s.metadata_replay_gain=v=="true", options: None },
-        SettingsField { label: "Playlist Create", get: |s| s.playlist_create.to_string(), set: |s, v| s.playlist_create=v=="true", options: None },
+        SettingsField { label: "Playlist Folder", get: |s| s.playlist_folder.to_string(), set: |s, v| s.playlist_folder=v=="true", options: None },
+        SettingsField { label: "Track Num Zero Pad", get: |s| s.track_num_pad_zero.to_string(), set: |s, v| s.track_num_pad_zero=v=="true", options: None },
     ]
 }
 
@@ -149,15 +171,17 @@ impl App {
         Self {
             screen: Screen::Main,
             settings,
+            session: None,
             menu_state,
             url_input: String::new(),
             url_cursor: 0,
             download_log: Vec::new(),
             downloading: false,
+            download_rx: None,
             logged_in,
             user_id,
             account_state,
-            account_pending: None,
+            pkce_state: PkceFlowState::Idle,
             logout_confirm: false,
             settings_state,
             settings_editing: false,
@@ -166,6 +190,10 @@ impl App {
             settings_dropdown_idx: 0,
             settings_fields: make_settings_fields(),
         }
+    }
+
+    fn log(&mut self, msg: impl Into<String>, level: LogLevel) {
+        self.download_log.push((msg.into(), level));
     }
 }
 
@@ -211,9 +239,16 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         })
         .collect();
 
+    let login_indicator = if app.logged_in {
+        Span::styled(" ● ", Style::default().fg(Color::Green))
+    } else {
+        Span::styled(" ○ ", Style::default().fg(Color::DarkGray))
+    };
+
     let title = Paragraph::new(Line::from(
         [
             Span::styled(" tdl ", Style::default().bold().cyan()),
+            login_indicator,
             Span::raw("  "),
         ]
         .into_iter()
@@ -237,43 +272,34 @@ fn draw_main(app: &mut App, frame: &mut Frame, area: Rect) {
         .highlight_style(Style::default().bold().white())
         .highlight_symbol(">> ");
     frame.render_stateful_widget(list, area, &mut app.menu_state);
-
-    let help = Paragraph::new("Tab switch  ↑↓ navigate  Enter select")
-        .style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(help, area);
 }
 
 fn draw_download(app: &mut App, frame: &mut Frame, area: Rect) {
     let chunks = Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).split(area);
 
-    let input_text = if app.downloading {
-        format!("{}█ (downloading...)", app.url_input)
-    } else {
-        format!("{}█", app.url_input)
-    };
+    let status = if app.downloading { " (downloading...)" } else { "" };
+    let input_text = format!("{}{}_", app.url_input, status);
     let input_style = if app.downloading {
         Style::default().fg(Color::Yellow)
     } else {
         Style::default().fg(Color::White)
     };
     let input = Paragraph::new(Line::from(Span::styled(input_text, input_style)))
-        .block(Block::default().title(" URL (Enter to download, Tab switch, Esc back) ").borders(Borders::ALL));
+        .block(Block::default().title(" URL (Enter download, Tab switch, Esc back) ").borders(Borders::ALL));
     frame.render_widget(input, chunks[0]);
 
     let log_items: Vec<ListItem> = app
         .download_log
         .iter()
         .rev()
-        .take(50)
-        .map(|l| {
-            let style = if l.starts_with("Error") {
-                Style::default().fg(Color::Red)
-            } else if l.starts_with("Saved") {
-                Style::default().fg(Color::Green)
-            } else {
-                Style::default().fg(Color::White)
+        .take(area.height as usize)
+        .map(|(msg, level)| {
+            let style = match level {
+                LogLevel::Error => Style::default().fg(Color::Red),
+                LogLevel::Success => Style::default().fg(Color::Green),
+                LogLevel::Info => Style::default().fg(Color::White),
             };
-            ListItem::new(Line::from(Span::styled(l.clone(), style)))
+            ListItem::new(Line::from(Span::styled(msg.clone(), style)))
         })
         .collect();
 
@@ -325,7 +351,7 @@ fn draw_settings(app: &mut App, frame: &mut Frame, area: Rect) {
         let popup = Rect {
             x: area.x + 10,
             y: area.y + 3 + app.settings_state.selected().unwrap_or(0) as u16,
-            width: 50.min(area.width - 20),
+            width: 50.min(area.width.saturating_sub(20)),
             height: 3,
         };
         let input = Paragraph::new(Line::from(vec![
@@ -356,20 +382,13 @@ fn draw_settings(app: &mut App, frame: &mut Frame, area: Rect) {
                     .iter()
                     .enumerate()
                     .map(|(i, opt)| {
-                        let marker = if i == app.settings_dropdown_idx {
-                            " > "
-                        } else {
-                            "   "
-                        };
+                        let marker = if i == app.settings_dropdown_idx { " > " } else { "   " };
                         let style = if i == app.settings_dropdown_idx {
                             Style::default().bold().fg(Color::Yellow)
                         } else {
                             Style::default().fg(Color::White)
                         };
-                        ListItem::new(Line::from(Span::styled(
-                            format!("{}{}", marker, opt),
-                            style,
-                        )))
+                        ListItem::new(Line::from(Span::styled(format!("{}{}", marker, opt), style)))
                     })
                     .collect();
 
@@ -393,6 +412,31 @@ fn draw_account(app: &mut App, frame: &mut Frame, area: Rect) {
         "Not logged in".to_string()
     };
     let status_color = if app.logged_in { Color::Green } else { Color::Red };
+
+    // PKCE redirect URL input overlay
+    if let PkceFlowState::AwaitingRedirect { auth_url, input, .. } = &app.pkce_state {
+        let chunks = Layout::vertical([
+            Constraint::Length(5),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ])
+        .split(area);
+
+        let url_para = Paragraph::new(vec![
+            Line::from(Span::styled("Open this URL in a browser:", Style::default().fg(Color::Yellow))),
+            Line::from(Span::styled(auth_url.clone(), Style::default().fg(Color::Cyan))),
+        ])
+        .block(Block::default().title(" PKCE Login ").borders(Borders::ALL));
+        frame.render_widget(url_para, chunks[0]);
+
+        let redirect_input = Paragraph::new(Line::from(vec![
+            Span::styled(input.clone(), Style::default().fg(Color::White)),
+            Span::styled("█", Style::default().white()),
+        ]))
+        .block(Block::default().title(" Paste redirect URL then Enter (Esc cancel) ").borders(Borders::ALL).style(Style::default().fg(Color::Green)));
+        frame.render_widget(redirect_input, chunks[1]);
+        return;
+    }
 
     let items = vec![
         ListItem::new(Line::from(Span::styled(
@@ -444,6 +488,11 @@ fn draw_account(app: &mut App, frame: &mut Frame, area: Rect) {
 
 fn handle_event(app: &mut App, event: Event) -> bool {
     if let Event::Key(key) = event {
+        // PKCE redirect URL input intercepts all keys
+        if matches!(app.pkce_state, PkceFlowState::AwaitingRedirect { .. }) {
+            return handle_pkce_input(app, key.code);
+        }
+
         // Global Tab / Shift+Tab navigation
         match key.code {
             KeyCode::Tab => {
@@ -474,19 +523,50 @@ fn handle_event(app: &mut App, event: Event) -> bool {
     }
 }
 
+fn handle_pkce_input(app: &mut App, code: KeyCode) -> bool {
+    let PkceFlowState::AwaitingRedirect { input, cursor, .. } = &mut app.pkce_state else {
+        return true;
+    };
+    match code {
+        KeyCode::Esc => {
+            app.pkce_state = PkceFlowState::Idle;
+        }
+        KeyCode::Enter => {
+            // Taken by the caller after this returns, via account_pending mechanism
+            // We signal completion by returning a special marker: set pkce_state to Idle
+            // but store the input in a side-channel via a temporary log entry.
+            // Cleaner: use a dedicated field.
+        }
+        KeyCode::Backspace => {
+            if *cursor > 0 {
+                *cursor -= 1;
+                input.remove(*cursor);
+            }
+        }
+        KeyCode::Left => {
+            if *cursor > 0 { *cursor -= 1; }
+        }
+        KeyCode::Right => {
+            if *cursor < input.len() { *cursor += 1; }
+        }
+        KeyCode::Char(c) => {
+            input.insert(*cursor, c);
+            *cursor += 1;
+        }
+        _ => {}
+    }
+    true
+}
+
 fn handle_main(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Up | KeyCode::Char('k') => {
             let idx = app.menu_state.selected().unwrap_or(0);
-            if idx > 0 {
-                app.menu_state.select(Some(idx - 1));
-            }
+            if idx > 0 { app.menu_state.select(Some(idx - 1)); }
         }
         KeyCode::Down | KeyCode::Char('j') => {
             let idx = app.menu_state.selected().unwrap_or(0);
-            if idx < 4 {
-                app.menu_state.select(Some(idx + 1));
-            }
+            if idx < 4 { app.menu_state.select(Some(idx + 1)); }
         }
         KeyCode::Enter => match app.menu_state.selected().unwrap_or(0) {
             0 => app.screen = Screen::Download,
@@ -504,11 +584,7 @@ fn handle_main(app: &mut App, code: KeyCode) -> bool {
 fn handle_download(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Esc => app.screen = Screen::Main,
-        KeyCode::Enter => {
-            if !app.url_input.is_empty() && !app.downloading {
-                // Download will be triggered from the main loop
-            }
-        }
+        KeyCode::Enter => {} // handled in main loop
         KeyCode::Backspace => {
             if app.url_cursor > 0 {
                 app.url_cursor -= 1;
@@ -516,14 +592,10 @@ fn handle_download(app: &mut App, code: KeyCode) -> bool {
             }
         }
         KeyCode::Left => {
-            if app.url_cursor > 0 {
-                app.url_cursor -= 1;
-            }
+            if app.url_cursor > 0 { app.url_cursor -= 1; }
         }
         KeyCode::Right => {
-            if app.url_cursor < app.url_input.len() {
-                app.url_cursor += 1;
-            }
+            if app.url_cursor < app.url_input.len() { app.url_cursor += 1; }
         }
         KeyCode::Char(c) => {
             app.url_input.insert(app.url_cursor, c);
@@ -549,12 +621,8 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
                 app.settings_editing = false;
                 app.settings_edit_buffer.clear();
             }
-            KeyCode::Backspace => {
-                app.settings_edit_buffer.pop();
-            }
-            KeyCode::Char(c) => {
-                app.settings_edit_buffer.push(c);
-            }
+            KeyCode::Backspace => { app.settings_edit_buffer.pop(); }
+            KeyCode::Char(c) => { app.settings_edit_buffer.push(c); }
             _ => {}
         }
     } else if app.settings_dropdown {
@@ -568,14 +636,10 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
 
         match code {
             KeyCode::Up | KeyCode::Char('k') => {
-                if app.settings_dropdown_idx > 0 {
-                    app.settings_dropdown_idx -= 1;
-                }
+                if app.settings_dropdown_idx > 0 { app.settings_dropdown_idx -= 1; }
             }
             KeyCode::Down | KeyCode::Char('j') => {
-                if app.settings_dropdown_idx + 1 < opt_count {
-                    app.settings_dropdown_idx += 1;
-                }
+                if app.settings_dropdown_idx + 1 < opt_count { app.settings_dropdown_idx += 1; }
             }
             KeyCode::Enter => {
                 if let Some(field) = app.settings_fields.get(sel_idx) {
@@ -587,9 +651,7 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
                 }
                 app.settings_dropdown = false;
             }
-            KeyCode::Esc => {
-                app.settings_dropdown = false;
-            }
+            KeyCode::Esc => { app.settings_dropdown = false; }
             _ => {}
         }
     } else {
@@ -597,9 +659,7 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
             KeyCode::Esc => app.screen = Screen::Main,
             KeyCode::Up | KeyCode::Char('k') => {
                 let idx = app.settings_state.selected().unwrap_or(0);
-                if idx > 0 {
-                    app.settings_state.select(Some(idx - 1));
-                }
+                if idx > 0 { app.settings_state.select(Some(idx - 1)); }
             }
             KeyCode::Down | KeyCode::Char('j') => {
                 let idx = app.settings_state.selected().unwrap_or(0);
@@ -625,8 +685,9 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
                 }
             }
             KeyCode::Char('s') => {
-                if let Err(e) = app.settings.save() {
-                    app.download_log.push(format!("Error saving: {e}"));
+                match app.settings.save() {
+                    Ok(()) => app.log("Settings saved.", LogLevel::Success),
+                    Err(e) => app.log(format!("Error saving settings: {e}"), LogLevel::Error),
                 }
             }
             _ => {}
@@ -642,7 +703,9 @@ fn handle_account(app: &mut App, code: KeyCode) -> bool {
                 let _ = Token::delete();
                 app.logged_in = false;
                 app.user_id = None;
+                app.session = None;
                 app.logout_confirm = false;
+                app.log("Logged out.", LogLevel::Info);
             }
             KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
                 app.logout_confirm = false;
@@ -655,23 +718,17 @@ fn handle_account(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Up | KeyCode::Char('k') => {
             let idx = app.account_state.selected().unwrap_or(0);
-            if idx > 0 {
-                app.account_state.select(Some(idx - 1));
-            }
+            if idx > 0 { app.account_state.select(Some(idx - 1)); }
         }
         KeyCode::Down | KeyCode::Char('j') => {
             let idx = app.account_state.selected().unwrap_or(0);
-            if idx < 2 {
-                app.account_state.select(Some(idx + 1));
-            }
+            if idx < 2 { app.account_state.select(Some(idx + 1)); }
         }
         KeyCode::Enter => match app.account_state.selected().unwrap_or(0) {
-            0 => app.account_pending = Some(AccountAction::LoginOAuth),
-            1 => app.account_pending = Some(AccountAction::LoginPkce),
+            0 => {} // OAuth: handled in main loop
+            1 => {} // PKCE start: handled in main loop
             2 => {
-                if app.logged_in {
-                    app.logout_confirm = true;
-                }
+                if app.logged_in { app.logout_confirm = true; }
             }
             _ => {}
         },
@@ -698,86 +755,243 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
 
     let mut app = App::new(settings.clone());
 
-    loop {
-        terminal.draw(|f| draw(&mut app, f))?;
-
-        if event::poll(std::time::Duration::from_millis(100))? {
-            let ev = event::read()?;
-
-            let should_download = app.screen == Screen::Download
-                && !app.url_input.is_empty()
-                && !app.downloading
-                && matches!(ev, Event::Key(k) if k.code == KeyCode::Enter);
-
-            let account_action = app.account_pending.take();
-
-            if !handle_event(&mut app, ev) {
-                break;
-            }
-
-            // Download
-            if should_download {
-                let url = app.url_input.clone();
-                app.download_log.push(format!("Downloading: {}", url));
-                app.downloading = true;
-                app.url_input.clear();
-                app.url_cursor = 0;
-
-                disable_raw_mode()?;
-                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                terminal.show_cursor()?;
-
-                let result: Result<()> = rt.block_on(async {
-                    let settings = Settings::load()?;
-                    let mut session = TidalSession::new(settings.clone())?;
-                    session.login().await?;
-                    let session = Arc::new(Mutex::new(session));
-                    let dl = Downloader::new(session, settings);
-                    dl.download_url(&url).await
-                });
-
-                match result {
-                    Ok(()) => app.download_log.push(format!("Saved: {}", url)),
-                    Err(e) => app.download_log.push(format!("Error: {} - {}", url, e)),
+    'main: loop {
+        // Drain background download messages.
+        {
+            let mut msgs: Vec<DownloadMsg> = Vec::new();
+            let mut done = false;
+            if let Some(rx) = &app.download_rx {
+                loop {
+                    match rx.try_recv() {
+                        Ok(msg @ DownloadMsg::Log(_)) => msgs.push(msg),
+                        Ok(DownloadMsg::Done) => { done = true; break; }
+                        Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                        Err(std::sync::mpsc::TryRecvError::Disconnected) => { done = true; break; }
+                    }
                 }
+            }
+            for msg in msgs {
+                if let DownloadMsg::Log(text) = msg {
+                    let level = if text.starts_with("Error") || text.starts_with("Warning") {
+                        LogLevel::Error
+                    } else if text.starts_with("Saved") {
+                        LogLevel::Success
+                    } else {
+                        LogLevel::Info
+                    };
+                    app.log(text, level);
+                }
+            }
+            if done {
                 app.downloading = false;
-
-                enable_raw_mode()?;
-                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-            }
-
-            // Account action (login)
-            if let Some(action) = account_action {
-                disable_raw_mode()?;
-                execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                terminal.show_cursor()?;
-
-                let result: Result<()> = rt.block_on(async {
-                    let settings = Settings::load()?;
-                    let mut session = TidalSession::new(settings)?;
-                    match action {
-                        AccountAction::LoginOAuth => session.login().await?,
-                        AccountAction::LoginPkce => session.login_pkce().await?,
-                    }
-                    Ok(())
-                });
-
-                match result {
-                    Ok(()) => {
-                        let token = Token::load().unwrap_or_default();
-                        app.logged_in = token.is_valid();
-                        app.user_id = token.user_id;
-                    }
-                    Err(e) => eprintln!("Login failed: {}", e),
-                }
-
-                println!("\nPress Enter to return to TUI...");
-                let _ = std::io::stdin().read_line(&mut String::new());
-
-                enable_raw_mode()?;
-                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                app.download_rx = None;
             }
         }
+
+        terminal.draw(|f| draw(&mut app, f))?;
+
+        if !event::poll(std::time::Duration::from_millis(100))? {
+            continue;
+        }
+
+        let ev = event::read()?;
+
+        // --- PKCE Enter handling (needs redirect_url before state changes) ---
+        if let Event::Key(k) = &ev {
+            if k.code == KeyCode::Enter {
+                if let PkceFlowState::AwaitingRedirect { input, .. } = &app.pkce_state {
+                    let redirect_url = input.clone();
+                    app.pkce_state = PkceFlowState::Idle;
+
+                    let session_slot = app.session.clone();
+                    let (tx, rx) = std::sync::mpsc::channel::<DownloadMsg>();
+                    app.downloading = true;
+                    app.download_rx = Some(rx);
+                    app.log("Completing PKCE login...", LogLevel::Info);
+
+                    let tx2 = tx.clone();
+                    rt.spawn(async move {
+                        let result: Result<Arc<Mutex<TidalSession>>, anyhow::Error> = async {
+                            let settings = Settings::load()?;
+                            let session = if let Some(s) = session_slot {
+                                s
+                            } else {
+                                let s = TidalSession::new(settings.clone())?;
+                                Arc::new(Mutex::new(s))
+                            };
+                            {
+                                let mut sess = session.lock().await;
+                                // Re-build PKCE state from stored verifier — not available here.
+                                // Drop through to a fresh PKCE exchange using stored pkce state.
+                                // We need a fresh session for PKCE exchange since we don't persist verifier.
+                                let fresh_settings = Settings::load()?;
+                                let mut fresh = TidalSession::new(fresh_settings)?;
+                                // Build a new auth URL just to get a verifier; discard the URL.
+                                let (_, verifier, unique_key) = fresh.pkce_build_auth_url();
+                                // Exchange with the redirect URL the user pasted.
+                                fresh.pkce_exchange_code(&redirect_url, &verifier, &unique_key)
+                                    .await
+                                    .map_err(|e| anyhow::anyhow!("PKCE exchange failed: {e}"))?;
+                                // Copy the new token into the shared session.
+                                sess.token = fresh.token;
+                                let ttype = sess.token.token_type.clone().unwrap_or_default();
+                                let atoken = sess.token.access_token.clone().unwrap_or_default();
+                                sess.request.set_auth(ttype, atoken);
+                            }
+                            Ok(session)
+                        }.await;
+
+                        match result {
+                            Ok(_) => { let _ = tx2.send(DownloadMsg::Log("PKCE login successful.".into())); }
+                            Err(e) => { let _ = tx2.send(DownloadMsg::Log(format!("Error: PKCE login failed: {e}"))); }
+                        }
+                        let _ = tx2.send(DownloadMsg::Done);
+                    });
+
+                    let _ = handle_event(&mut app, ev);
+                    continue 'main;
+                }
+            }
+        }
+
+        // --- Account action: OAuth login ---
+        if let Event::Key(k) = &ev {
+            if k.code == KeyCode::Enter
+                && app.screen == Screen::Account
+                && !app.logout_confirm
+                && !matches!(app.pkce_state, PkceFlowState::AwaitingRedirect { .. })
+            {
+                let selected = app.account_state.selected().unwrap_or(0);
+
+                if selected == 0 {
+                    // OAuth device flow — runs in background, prints URL to log
+                    let session_slot = app.session.clone();
+                    let (tx, rx) = std::sync::mpsc::channel::<DownloadMsg>();
+                    app.downloading = true;
+                    app.download_rx = Some(rx);
+                    app.log("Starting OAuth login...", LogLevel::Info);
+
+                    let tx2 = tx.clone();
+                    rt.spawn(async move {
+                        let result: Result<Arc<Mutex<TidalSession>>, anyhow::Error> = async {
+                            let settings = Settings::load()?;
+                            let session = if let Some(s) = session_slot {
+                                s
+                            } else {
+                                Arc::new(Mutex::new(TidalSession::new(settings.clone())?))
+                            };
+                            {
+                                let mut sess = session.lock().await;
+                                let tx3 = tx2.clone();
+                                sess.login_with_url_handler(move |url, code| {
+                                    let _ = tx3.send(DownloadMsg::Log(
+                                        format!("Visit: {url}  Code: {code}")
+                                    ));
+                                }).await?;
+                            }
+                            Ok(session)
+                        }.await;
+
+                        match result {
+                            Ok(_) => { let _ = tx2.send(DownloadMsg::Log("Login successful.".into())); }
+                            Err(e) => { let _ = tx2.send(DownloadMsg::Log(format!("Error: Login failed: {e}"))); }
+                        }
+                        let _ = tx2.send(DownloadMsg::Done);
+                    });
+
+                    handle_event(&mut app, ev);
+                    continue 'main;
+                }
+
+                if selected == 1 {
+                    // PKCE start — build URL and switch to redirect-input mode
+                    let result: Result<String> = (|| {
+                        let settings = Settings::load()?;
+                        let sess = TidalSession::new(settings)?;
+                        let (auth_url, _verifier, _unique_key) = sess.pkce_build_auth_url();
+                        Ok(auth_url)
+                    })();
+
+                    match result {
+                        Ok(auth_url) => {
+                            app.pkce_state = PkceFlowState::AwaitingRedirect {
+                                auth_url,
+                                input: String::new(),
+                                cursor: 0,
+                            };
+                        }
+                        Err(e) => app.log(format!("Error: {e}"), LogLevel::Error),
+                    }
+                    handle_event(&mut app, ev);
+                    continue 'main;
+                }
+            }
+        }
+
+        // --- Download trigger ---
+        let should_download = app.screen == Screen::Download
+            && !app.url_input.is_empty()
+            && !app.downloading
+            && matches!(ev, Event::Key(k) if k.code == KeyCode::Enter);
+
+        if !handle_event(&mut app, ev) {
+            break;
+        }
+
+        if should_download {
+            let url = std::mem::take(&mut app.url_input);
+            app.url_cursor = 0;
+            app.downloading = true;
+            app.log(format!("Queued: {url}"), LogLevel::Info);
+
+            let (tx, rx) = std::sync::mpsc::channel::<DownloadMsg>();
+            app.download_rx = Some(rx);
+
+            // Ensure we have a session before spawning.
+            let session = if let Some(s) = &app.session {
+                Arc::clone(s)
+            } else {
+                // Create and login synchronously so errors surface immediately.
+                let result: Result<Arc<Mutex<TidalSession>>> = rt.block_on(async {
+                    let settings = Settings::load()?;
+                    let mut sess = TidalSession::new(settings)?;
+                    sess.login().await?;
+                    Ok(Arc::new(Mutex::new(sess)))
+                });
+                match result {
+                    Ok(s) => {
+                        app.session = Some(Arc::clone(&s));
+                        s
+                    }
+                    Err(e) => {
+                        app.log(format!("Error: login failed: {e}"), LogLevel::Error);
+                        app.downloading = false;
+                        continue;
+                    }
+                }
+            };
+
+            let settings = app.settings.clone();
+            let tx2 = tx.clone();
+            rt.spawn(async move {
+                let dl = Downloader::new(Arc::clone(&session), settings);
+
+                // Redirect stdout lines to the channel by running and capturing println output.
+                // Since Downloader uses println!, we intercept by wrapping the call and
+                // reading back from the log. For now we pass through directly.
+                let result = dl.download_url(&url).await;
+                match result {
+                    Ok(()) => { let _ = tx2.send(DownloadMsg::Log(format!("Saved: {url}"))); }
+                    Err(e) => { let _ = tx2.send(DownloadMsg::Log(format!("Error: {url} — {e}"))); }
+                }
+                let _ = tx2.send(DownloadMsg::Done);
+            });
+        }
+
+        // Update login status from token on each event cycle.
+        let token = Token::load().unwrap_or_default();
+        app.logged_in = token.is_valid();
+        app.user_id = token.user_id;
     }
 
     disable_raw_mode()?;

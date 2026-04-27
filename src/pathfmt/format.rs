@@ -210,16 +210,36 @@ pub fn extension_guess(
     ".m4a"
 }
 
-pub fn get_format_template<'a>(
-    media_type: &str,
-    settings: &'a crate::config::settings::Settings,
-) -> &'a str {
-    match media_type {
-        "album" => &settings.format_album,
-        "playlist" => &settings.format_playlist,
-        "mix" => &settings.format_mix,
-        "track" => &settings.format_track,
-        "video" => &settings.format_video,
-        _ => &settings.format_track,
+/// Build the relative path for a track under `download_base_path`.
+///
+/// Normal:    `{artist}/{album}/{num}. {title}`
+/// Playlist:  `Playlists/{playlist_name}/{num}. {artist} - {title}`  (when playlist_name is Some)
+/// Mix:       `Playlists/{mix_name}/{num}. {artist} - {title}`       (when mix_name is Some)
+pub fn build_track_path(info: &MediaInfo, pad_zero: bool) -> String {
+    let artist = sanitize_filename(info.album_artist.as_deref().unwrap_or("Unknown Artist"));
+    let album  = sanitize_filename(info.album_title.as_deref().unwrap_or("Unknown Album"));
+    let title  = sanitize_filename(info.track_title.as_deref().unwrap_or("Unknown Title"));
+    let track_artist = sanitize_filename(info.artist_name.as_deref().unwrap_or("Unknown Artist"));
+
+    let num = info.album_track_num.unwrap_or(0);
+    let num_str = if num == 0 {
+        String::new()
+    } else if pad_zero {
+        let total = info.album_num_tracks.unwrap_or(0).max(1);
+        let width = if total >= 100 { 3 } else { 2 };
+        format!("{:0>width$}. ", num, width = width)
+    } else {
+        format!("{}. ", num)
+    };
+
+    if let Some(pl) = &info.playlist_name {
+        let pl = sanitize_filename(pl);
+        return format!("Playlists/{}/{}{} - {}", pl, num_str, track_artist, title);
     }
+    if let Some(mx) = &info.mix_name {
+        let mx = sanitize_filename(mx);
+        return format!("Playlists/{}/{}{} - {}", mx, num_str, track_artist, title);
+    }
+
+    format!("{}/{}/{}{}", artist, album, num_str, title)
 }

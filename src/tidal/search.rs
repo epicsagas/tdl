@@ -92,10 +92,17 @@ pub async fn get_album(request: &TidalRequest, album_id: u64) -> Result<Album> {
 
 /// Fetch all tracks belonging to an album, automatically paginating.
 ///
-/// The album items endpoint wraps each track in `{"item": {track}, "type": "track"}`.
+/// Tries V1 `albums/{id}/items` first; on 404 falls back to V1 `albums/{id}/tracks`.
 pub async fn get_album_tracks(request: &TidalRequest, album_id: u64) -> Result<Vec<Track>> {
-    let path = format!("albums/{album_id}/items");
-    paginate_wrapped_items::<Track>(request, &path).await
+    let items_path = format!("albums/{album_id}/items");
+    match paginate_wrapped_items::<Track>(request, &items_path).await {
+        Ok(tracks) => Ok(tracks),
+        Err(e) if e.to_string().contains("404") => {
+            let tracks_path = format!("albums/{album_id}/tracks");
+            paginate_items::<Track>(request, &tracks_path).await
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Fetch all tracks belonging to a playlist, automatically paginating.

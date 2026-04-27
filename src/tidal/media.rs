@@ -107,21 +107,21 @@ struct AlbumDeserialize {
         rename = "id"
     )]
     id: u64,
-    #[serde(default)]
+    #[serde(default, alias = "title")]
     name: Option<String>,
     #[serde(default)]
     cover: Option<String>,
     #[serde(default)]
     duration: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "numberOfTracks", alias = "numTracks")]
     num_tracks: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "numberOfVideos", alias = "numVideos")]
     num_videos: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "numberOfVolumes", alias = "numVolumes")]
     num_volumes: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "releaseDate")]
     release_date: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "availableReleaseDate")]
     available_release_date: Option<String>,
     #[serde(default)]
     copyright: Option<String>,
@@ -256,9 +256,9 @@ pub struct Track {
     pub copyright: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "trackNumber")]
     pub track_num: Option<u32>,
-    #[serde(default)]
+    #[serde(default, alias = "volumeNumber")]
     pub volume_num: Option<u32>,
     #[serde(default)]
     pub listen_url: Option<String>,
@@ -453,12 +453,37 @@ pub struct LyricsResponse {
     pub track_id: u64,
     #[serde(default)]
     pub lyrics_provider: Option<String>,
-    #[serde(default)]
-    pub subtitles: Option<Vec<LyricsLine>>,
+    /// API sometimes returns a Vec<LyricsLine>, other times a raw LRC string.
+    #[serde(default, deserialize_with = "deserialize_subtitles")]
+    pub subtitles: Option<LyricsSubtitles>,
     #[serde(default)]
     pub text: Option<String>,
     #[serde(default)]
     pub right_to_left: Option<bool>,
+}
+
+#[derive(Debug, Clone)]
+pub enum LyricsSubtitles {
+    Lines(Vec<LyricsLine>),
+    Raw(String),
+}
+
+fn deserialize_subtitles<'de, D>(deserializer: D) -> Result<Option<LyricsSubtitles>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let val = Option::<serde_json::Value>::deserialize(deserializer)?;
+    match val {
+        None => Ok(None),
+        Some(serde_json::Value::String(s)) => Ok(Some(LyricsSubtitles::Raw(s))),
+        Some(serde_json::Value::Array(arr)) => {
+            let lines: Vec<LyricsLine> =
+                serde_json::from_value(serde_json::Value::Array(arr))
+                    .map_err(de::Error::custom)?;
+            Ok(Some(LyricsSubtitles::Lines(lines)))
+        }
+        Some(_) => Ok(None),
+    }
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -595,7 +620,7 @@ impl Album {
             .unwrap_or_default()
     }
 
-    /// Extract the year from `release_date` or `available_release_date`.
+    /// Extract the year from `release_date`, `available_release_date`, or `year`.
     /// Tidal dates are typically ISO-8601 (e.g. "2024-03-15").
     pub fn year_str(&self) -> Option<String> {
         let date_str = self
@@ -603,14 +628,10 @@ impl Album {
             .as_deref()
             .or(self.available_release_date.as_deref());
 
-        date_str.map(|d| {
-            // Take just the first 4 characters which are the year.
-            if d.len() >= 4 {
-                d[..4].to_string()
-            } else {
-                d.to_string()
-            }
-        })
+        if let Some(d) = date_str {
+            return Some(if d.len() >= 4 { d[..4].to_string() } else { d.to_string() });
+        }
+        self.year.map(|y| y.to_string())
     }
 
     /// Build a Tidal cover-art URL from the `cover` UUID.
@@ -621,6 +642,7 @@ impl Album {
     /// Result: `https://resources.tidal.com/images/{id}/{dimension}.jpg`
     pub fn image_url(&self, dimension: &str) -> Option<String> {
         self.cover.as_ref().map(|id| {
+            let id = id.replace('-', "/");
             format!("https://resources.tidal.com/images/{id}/{dimension}.jpg")
         })
     }
@@ -718,7 +740,7 @@ mod tests {
         let url = album.image_url("320x320").unwrap();
         assert_eq!(
             url,
-            "https://resources.tidal.com/images/a1b2c3d4-e5f6-7890-abcd-ef1234567890/320x320.jpg"
+            "https://resources.tidal.com/images/a1b2c3d4/e5f6/7890/abcd/ef1234567890/320x320.jpg"
         );
     }
 
@@ -826,7 +848,8 @@ mod tests {
             ]
         }"#;
         let lyrics: LyricsResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(lyrics.subtitles.unwrap().len(), 2);
+        let LyricsSubtitles::Lines(lines) = lyrics.subtitles.unwrap() else { panic!("expected Lines") };
+        assert_eq!(lines.len(), 2);
     }
 
     #[test]

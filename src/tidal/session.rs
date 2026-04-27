@@ -122,7 +122,33 @@ impl TidalSession {
         }
 
         // 3. Full device-authorization login.
-        self.device_auth_login().await
+        self.device_auth_login(|url, code| {
+            println!("Visit {} and enter the code: {}", url, code);
+        })
+        .await
+    }
+
+    /// Like `login` but calls `url_handler(url, code)` instead of printing.
+    /// Used by GUI to open the browser and emit the URL to the frontend.
+    pub async fn login_with_url_handler<F>(&mut self, url_handler: F) -> Result<()>
+    where
+        F: FnOnce(&str, &str),
+    {
+        if self.token.is_valid() {
+            self.apply_auth_to_request();
+            if let Ok(session) = self.validate_session().await {
+                self.set_session_info(&session);
+                return Ok(());
+            }
+        }
+        if self.token.refresh_token.is_some() {
+            if self.refresh_token().await.is_ok() {
+                let session = self.validate_session().await?;
+                self.set_session_info(&session);
+                return Ok(());
+            }
+        }
+        self.device_auth_login(url_handler).await
     }
 
     /// Push current token credentials into the TidalRequest helper.
@@ -209,7 +235,13 @@ impl TidalSession {
     // -----------------------------------------------------------------------
 
     /// Perform the full device-authorization login flow.
-    async fn device_auth_login(&mut self) -> Result<()> {
+    ///
+    /// `url_handler` is called with `(login_url, user_code)` so the caller can
+    /// open a browser, emit a GUI event, or just print to the terminal.
+    async fn device_auth_login<F>(&mut self, url_handler: F) -> Result<()>
+    where
+        F: FnOnce(&str, &str),
+    {
         // Step 1: Request device authorization.
         let mut form = HashMap::new();
         form.insert("client_id".to_string(), self.client_id.clone());
@@ -223,15 +255,17 @@ impl TidalSession {
 
         // The API may or may not return verificationUriComplete.
         // If present, use it directly; otherwise build it from verification_uri + user_code.
-        let login_url = auth
+        let raw_url = auth
             .verification_uri_complete
             .clone()
             .unwrap_or_else(|| format!("{}/{}", auth.verification_uri, auth.user_code));
+        let login_url = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+            raw_url
+        } else {
+            format!("https://{}", raw_url)
+        };
 
-        println!(
-            "Visit {} and enter the code: {}",
-            login_url, auth.user_code
-        );
+        url_handler(&login_url, &auth.user_code);
 
         // Step 2: Poll for the token.
         let interval = Duration::from_secs(auth.interval);
@@ -292,53 +326,65 @@ impl TidalSession {
     // PKCE flow (for HiRes Lossless)
     // -----------------------------------------------------------------------
 
-    /// Perform PKCE-based login for HiRes Lossless quality.
+    /// Perform PKCE-based login for HiRes Lossless quality (CLI — reads redirect URL from stdin).
     pub async fn login_pkce(&mut self) -> Result<()> {
-        // Step 1: Generate random client_unique_key (16 random bytes as hex).
-        let key_bytes: [u8; 16] = rand::rng().random();
-        let client_unique_key = hex::encode(key_bytes);
-
-        // Step 2: Generate code_verifier (32 random bytes, base64url encoded).
-        let verifier_bytes: [u8; 32] = rand::rng().random();
-        let code_verifier = BASE64URL.encode(verifier_bytes);
-
-        // Step 3: Compute code_challenge = base64url(SHA256(code_verifier)).
-        let hash = Sha256::digest(code_verifier.as_bytes());
-        let code_challenge = BASE64URL.encode(hash);
-
-        // Step 4: Build the authorization URL.
-        let redirect_uri = "https://tidal.com/android/login/auth";
-        let auth_url = format!(
-            "https://login.tidal.com/authorize?response_type=code&redirect_uri={redirect_uri}&client_id={}&lang=EN&appMode=android&client_unique_key={}&code_challenge={}&code_challenge_method=S256&restrict_signup=true",
-            self.pkce_client_id,
-            client_unique_key,
-            code_challenge,
-        );
+        let (auth_url, code_verifier, client_unique_key) = self.pkce_build_auth_url();
 
         println!("Open the following URL in a browser to log in:");
         println!("{}", auth_url);
         println!();
-
-        // Step 5: Ask user for the redirect URL.
         print!("After login, paste the full redirect URL here: ");
         io::stdout().flush()?;
 
         let mut redirect_input = String::new();
         io::stdin().read_line(&mut redirect_input)?;
-        let redirect_input = redirect_input.trim();
+        let redirect_input = redirect_input.trim().to_string();
 
-        // Step 6: Extract the authorization code from the redirect URL.
-        let code = Self::extract_code_from_redirect(redirect_input)?;
+        self.pkce_exchange_code(&redirect_input, &code_verifier, &client_unique_key).await
+    }
 
-        // Step 7: Exchange the code for tokens.
+    /// Build PKCE auth URL and return (auth_url, code_verifier, client_unique_key).
+    /// Called by both CLI and GUI flows.
+    pub fn pkce_build_auth_url(&self) -> (String, String, String) {
+        let key_bytes: [u8; 16] = rand::rng().random();
+        let client_unique_key = hex::encode(key_bytes);
+
+        let verifier_bytes: [u8; 32] = rand::rng().random();
+        let code_verifier = BASE64URL.encode(verifier_bytes);
+
+        let hash = Sha256::digest(code_verifier.as_bytes());
+        let code_challenge = BASE64URL.encode(hash);
+
+        let redirect_uri = "https://tidal.com/android/login/auth";
+        let auth_url = format!(
+            "https://login.tidal.com/authorize?response_type=code&redirect_uri={redirect_uri}&client_id={}&lang=EN&appMode=android&client_unique_key={}&code_challenge={}&code_challenge_method=S256",
+            self.pkce_client_id,
+            client_unique_key,
+            code_challenge,
+        );
+
+        (auth_url, code_verifier, client_unique_key)
+    }
+
+    /// Exchange the PKCE authorization code (extracted from redirect_url) for tokens.
+    /// Called by both CLI and GUI flows after the user completes browser login.
+    pub async fn pkce_exchange_code(
+        &mut self,
+        redirect_url: &str,
+        code_verifier: &str,
+        client_unique_key: &str,
+    ) -> Result<()> {
+        let redirect_uri = "https://tidal.com/android/login/auth";
+        let code = Self::extract_code_from_redirect(redirect_url)?;
+
         let mut form = HashMap::new();
         form.insert("code".to_string(), code);
         form.insert("client_id".to_string(), self.pkce_client_id.clone());
         form.insert("grant_type".to_string(), "authorization_code".to_string());
         form.insert("redirect_uri".to_string(), redirect_uri.to_string());
         form.insert("scope".to_string(), SCOPE.replace(' ', "+"));
-        form.insert("code_verifier".to_string(), code_verifier);
-        form.insert("client_unique_key".to_string(), client_unique_key);
+        form.insert("code_verifier".to_string(), code_verifier.to_string());
+        form.insert("client_unique_key".to_string(), client_unique_key.to_string());
 
         let resp = self.request.post_auth("token", form).await?;
         let token_resp: TokenResponse = resp.json().await?;
@@ -351,12 +397,10 @@ impl TidalSession {
             );
         }
 
-        // Step 8: Save and validate.
         self.token.is_pkce = true;
         self.apply_token_response(&token_resp);
         let session = self.validate_session().await?;
         self.set_session_info(&session);
-        println!("PKCE login successful.");
         Ok(())
     }
 

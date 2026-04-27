@@ -45,11 +45,8 @@ pub struct Settings {
     pub download_base_path: String,
     pub quality_audio: Quality,
     pub quality_video: QualityVideo,
-    pub format_album: String,
-    pub format_playlist: String,
-    pub format_mix: String,
-    pub format_track: String,
-    pub format_video: String,
+    pub track_num_pad_zero: bool,
+    pub playlist_folder: bool,
     pub video_convert_mp4: bool,
     pub path_binary_ffmpeg: String,
     pub metadata_cover_dimension: CoverDimensions,
@@ -59,10 +56,8 @@ pub struct Settings {
     pub downloads_simultaneous_per_track_max: usize,
     pub download_delay_sec_min: f64,
     pub download_delay_sec_max: f64,
-    pub album_track_num_pad_min: u32,
     pub downloads_concurrent_max: usize,
     pub symlink_to_track: bool,
-    pub playlist_create: bool,
     pub metadata_replay_gain: bool,
 }
 
@@ -77,11 +72,8 @@ impl Default for Settings {
             download_base_path: "~/download".to_string(),
             quality_audio: Quality::default(),
             quality_video: QualityVideo::default(),
-            format_album: "Albums/{album_artist} - {album_title}{album_explicit}/{track_volume_num_optional}{album_track_num}. {artist_name} - {track_title}{album_explicit}".to_string(),
-            format_playlist: "Playlists/{playlist_name}/{artist_name} - {track_title}".to_string(),
-            format_mix: "Mix/{mix_name}/{artist_name} - {track_title}".to_string(),
-            format_track: "Tracks/{artist_name} - {track_title}{track_explicit}".to_string(),
-            format_video: "Videos/{artist_name} - {track_title}{track_explicit}".to_string(),
+            track_num_pad_zero: true,
+            playlist_folder: true,
             video_convert_mp4: true,
             path_binary_ffmpeg: String::new(),
             metadata_cover_dimension: CoverDimensions::default(),
@@ -91,24 +83,22 @@ impl Default for Settings {
             downloads_simultaneous_per_track_max: 20,
             download_delay_sec_min: 3.0,
             download_delay_sec_max: 5.0,
-            album_track_num_pad_min: 1,
             downloads_concurrent_max: 3,
             symlink_to_track: false,
-            playlist_create: false,
             metadata_replay_gain: true,
         }
     }
 }
 
 impl Settings {
-    /// Returns the configuration directory path: `~/.config/tdl/`
+    /// Returns the configuration directory path: `~/.tdl/`
     pub fn config_dir() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("tdl")
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("~"))
+            .join(".tdl")
     }
 
-    /// Returns the full path to the settings file: `~/.config/tdl/settings.json`
+    /// Returns the full path to the settings file: `~/.tdl/settings.json`
     pub fn config_path() -> PathBuf {
         Self::config_dir().join("settings.json")
     }
@@ -214,6 +204,8 @@ mod tests {
         assert_eq!(s.download_base_path, "~/download");
         assert_eq!(s.quality_audio, Quality::Low320k);
         assert_eq!(s.quality_video, QualityVideo::P480);
+        assert!(s.track_num_pad_zero);
+        assert!(s.playlist_folder);
         assert!(s.video_convert_mp4);
         assert!(s.path_binary_ffmpeg.is_empty());
         assert_eq!(s.metadata_cover_dimension, CoverDimensions::Px320);
@@ -223,10 +215,8 @@ mod tests {
         assert_eq!(s.downloads_simultaneous_per_track_max, 20);
         assert_eq!(s.download_delay_sec_min, 3.0);
         assert_eq!(s.download_delay_sec_max, 5.0);
-        assert_eq!(s.album_track_num_pad_min, 1);
         assert_eq!(s.downloads_concurrent_max, 3);
         assert!(!s.symlink_to_track);
-        assert!(!s.playlist_create);
         assert!(s.metadata_replay_gain);
     }
 
@@ -243,7 +233,8 @@ mod tests {
             original.metadata_cover_dimension,
             restored.metadata_cover_dimension
         );
-        assert_eq!(original.format_album, restored.format_album);
+        assert_eq!(original.track_num_pad_zero, restored.track_num_pad_zero);
+        assert_eq!(original.playlist_folder, restored.playlist_folder);
         assert_eq!(original.download_base_path, restored.download_base_path);
     }
 

@@ -12,8 +12,7 @@ use crate::download::segment;
 use crate::download::video;
 use crate::metadata::writer::{AudioMetadata, write_metadata};
 use crate::pathfmt::format::{
-    MediaInfo, check_file_exists, extension_guess, file_unique_suffix, format_path_media,
-    get_format_template,
+    MediaInfo, build_track_path, check_file_exists, extension_guess, file_unique_suffix,
 };
 use crate::tidal::media::{MediaType, Track};
 use crate::tidal::search;
@@ -110,6 +109,16 @@ impl Downloader {
     /// 10. Save cover art and lyrics files
     /// 11. Apply download delay
     pub async fn download_item(&self, media_type: MediaType, id: &str) -> Result<()> {
+        self.download_item_with_context(media_type, id, None, None).await
+    }
+
+    async fn download_item_with_context(
+        &self,
+        media_type: MediaType,
+        id: &str,
+        playlist_name: Option<&str>,
+        mix_name: Option<&str>,
+    ) -> Result<()> {
         let numeric_id: u64 = id.parse().context("Invalid media ID")?;
 
         // Determine if this is a video early so we can branch correctly.
@@ -123,58 +132,43 @@ impl Downloader {
         println!("Downloading: {artist} - {title}");
 
         // --- 2. Build destination path -------------------------------------
-        let type_key = match media_type {
-            MediaType::Video => "video",
-            MediaType::Track => "track",
-            MediaType::Album => "album",
-            MediaType::Playlist => "playlist",
-            MediaType::Mix => "mix",
-            MediaType::Artist => "track",
-        };
-        let template = get_format_template(type_key, &self.settings);
-
-        let media_info = self.build_media_info(&track);
-        let relative = format_path_media(
-            template,
-            &media_info,
-            self.settings.album_track_num_pad_min,
-        );
-
-        let ext = extension_guess(
-            is_video,
-            self.settings.video_convert_mp4,
-            self.settings.extract_flac,
-            &self.settings.quality_audio,
-            None,
-            track.media_metadata_tags.as_deref().unwrap_or(&Vec::new()),
-        );
+        let mut media_info = self.build_media_info(&track);
+        if let Some(name) = playlist_name {
+            media_info.playlist_name = Some(name.to_string());
+        }
+        if let Some(name) = mix_name {
+            media_info.mix_name = Some(name.to_string());
+        }
+        let relative = build_track_path(&media_info, self.settings.track_num_pad_zero);
 
         let base = expand_tilde(&self.settings.download_base_path);
-        let dest_path = PathBuf::from(&base)
-            .join(relative)
-            .with_extension(ext.trim_start_matches('.'));
 
-        println!("  Destination: {}", dest_path.display());
-
-        // Ensure the parent directory exists.
-        if let Some(parent) = dest_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        // --- 3. Check if file already exists --------------------------------
+        // --- 3. Check if file already exists (pre-manifest, multi-ext scan) -
+        // Use a stem path without extension; check_file_exists tries all audio exts.
+        let stem_path = PathBuf::from(format!("{}/{}", base, relative));
         let audio_extensions = ["flac", "m4a", "mp3", "mp4", "ts"];
         if self.settings.skip_existing
-            && let Some(_existing) = check_file_exists(&dest_path, &audio_extensions) {
-                println!("Skipping (already exists): {}", dest_path.display());
+            && let Some(existing) = check_file_exists(&stem_path, &audio_extensions) {
+                println!("Skipping (already exists): {}", existing.display());
                 self.apply_download_delay().await;
                 return Ok(());
             }
 
-        // Use a unique suffix to avoid collisions when not skipping.
-        let final_path = file_unique_suffix(&dest_path);
-
         // --- 4. Fetch stream / download URL --------------------------------
         if is_video {
+            let ext = extension_guess(
+                true,
+                self.settings.video_convert_mp4,
+                self.settings.extract_flac,
+                &self.settings.quality_audio,
+                None,
+                track.media_metadata_tags.as_deref().unwrap_or(&Vec::new()),
+            );
+            let dest_path = PathBuf::from(format!("{}/{}{}", base, relative, ext));
+            let final_path = file_unique_suffix(&dest_path);
+            if let Some(parent) = final_path.parent() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
             return self.download_video(numeric_id, &track, &final_path).await;
         }
 
@@ -183,6 +177,24 @@ impl Downloader {
             stream::fetch_track_stream(&sess.request, track.id, &self.settings.quality_audio)
                 .await?
         };
+
+        // Now we know the actual codec — pick the correct extension.
+        let ext = extension_guess(
+            false,
+            self.settings.video_convert_mp4,
+            self.settings.extract_flac,
+            &self.settings.quality_audio,
+            manifest.codecs.as_deref(),
+            track.media_metadata_tags.as_deref().unwrap_or(&Vec::new()),
+        );
+        // Append extension directly — do NOT use `.with_extension()` because the
+        // track title may contain a dot, which would be misread as a file extension.
+        let dest_path = PathBuf::from(format!("{}/{}{}", base, relative, ext));
+        println!("  Destination: {}", dest_path.display());
+        if let Some(parent) = dest_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        let final_path = file_unique_suffix(&dest_path);
 
         // --- 5. Download segments into a temp file -------------------------
         let temp_dir = final_path
@@ -240,41 +252,28 @@ impl Downloader {
             working_path = mp4_path;
         }
 
-        // --- 8. Extract FLAC from MP4 if applicable -----------------------
-        if self.settings.extract_flac
-            && !is_video
-            && working_path
-                .extension()
-                .is_some_and(|e| e == "mp4" || e == "m4a")
+        // --- 8. Extract FLAC from MP4 container if applicable --------------
+        // Use manifest codec to detect FLAC-in-MP4 regardless of the temp file
+        // extension (which is always ".part" at this stage).
+        let codec_is_flac = manifest
+            .codecs
+            .as_deref()
+            .is_some_and(|c| c.to_ascii_lowercase().contains("flac"));
+
+        if self.settings.extract_flac && !is_video && codec_is_flac
+            && video::ffmpeg_available(&self.settings.path_binary_ffmpeg)
         {
-            // Check if the codec is FLAC inside MP4.
-            let codec_is_flac = manifest
-                .codecs
-                .as_deref()
-                .is_some_and(|c| c.to_ascii_lowercase().contains("flac"));
-
-            if codec_is_flac && video::ffmpeg_available(&self.settings.path_binary_ffmpeg) {
-                let flac_path = final_path.with_extension("flac");
-                video::extract_flac(
-                    &working_path,
-                    &flac_path,
-                    &self.settings.path_binary_ffmpeg,
-                )?;
-                let _ = tokio::fs::remove_file(&working_path).await;
-                working_path = flac_path;
-            }
+            let flac_path = final_path.with_extension("flac");
+            video::extract_flac(
+                &working_path,
+                &flac_path,
+                &self.settings.path_binary_ffmpeg,
+            )?;
+            let _ = tokio::fs::remove_file(&working_path).await;
+            working_path = flac_path;
         }
 
-        // --- 9. Write metadata tags ----------------------------------------
-        if !is_video {
-            let meta = self.build_audio_metadata(&track);
-            // Best-effort: do not fail the download if tagging fails.
-            if let Err(e) = write_metadata(&working_path, &meta) {
-                println!("Warning: failed to write metadata: {e}");
-            }
-        }
-
-        // --- 10. Move to final destination ---------------------------------
+        // --- 9. Move to final destination ---------------------------------
         if working_path != final_path {
             tokio::fs::rename(&working_path, &final_path)
                 .await
@@ -284,44 +283,74 @@ impl Downloader {
                         final_path.display()
                     )
                 })?;
+        } else if working_path.extension().is_some_and(|e| e == "part") {
+            let renamed = working_path.with_extension("");
+            tokio::fs::rename(&working_path, &renamed).await?;
+        }
+
+        let dest_dir = final_path.parent();
+
+        // --- 10. Cover: read existing cover.jpg or fetch once ---------------
+        // cover.jpg is album-scoped; reuse it across tracks in the same folder.
+        let cover_bytes: Option<Vec<u8>> = if self.settings.metadata_cover_embed
+            || self.settings.cover_album_file
+        {
+            let cover_path = dest_dir.map(|d| d.join("cover.jpg"));
+            if let Some(ref p) = cover_path
+                && p.exists()
+            {
+                tokio::fs::read(p).await.ok()
+            } else {
+                let bytes = self.fetch_cover_bytes(&track).await;
+                if self.settings.cover_album_file {
+                    if let (Some(p), Some(b)) = (&cover_path, &bytes) {
+                        let _ = tokio::fs::write(p, b).await;
+                    }
+                }
+                bytes
+            }
         } else {
-            // The temp file may still have the .part extension.
-            if working_path.extension().is_some_and(|e| e == "part") {
-                let renamed = working_path.with_extension("");
-                tokio::fs::rename(&working_path, &renamed).await?;
+            None
+        };
+
+        // --- 11. Lyrics: fetch once for embed + file -----------------------
+        let lyrics_text: Option<String> =
+            if !is_video && (self.settings.lyrics_embed || self.settings.lyrics_file) {
+                self.fetch_lyrics_text(track.id).await
+            } else {
+                None
+            };
+
+        // --- 12. Write metadata tags ----------------------------------------
+        if !is_video {
+            let meta = self.build_audio_metadata(
+                &track,
+                if self.settings.metadata_cover_embed { cover_bytes } else { None },
+                if self.settings.lyrics_embed { lyrics_text.clone() } else { None },
+            );
+            if let Err(e) = write_metadata(&final_path, &meta) {
+                println!("Warning: failed to write metadata: {e}");
             }
         }
 
         println!("Saved: {}", final_path.display());
 
-        // --- 11. Save cover art and lyrics ---------------------------------
-        let dest_dir = final_path.parent();
-
-        if self.settings.cover_album_file
-            && let Some(dir) = dest_dir
-                && let Some(cover_url) = self.track_cover_url(&track) {
-                    let cover_path = dir.join("cover.jpg");
-                    if !cover_path.exists()
-                        && let Err(e) = self.download_cover(&cover_url, dir).await {
-                            println!("Warning: failed to download cover: {e}");
-                        }
-                }
-
+        // --- 13. Save .lrc file --------------------------------------------
         if self.settings.lyrics_file
-            && let Some(dir) = dest_dir {
-                let lrc_name = format!(
-                    "{}.lrc",
-                    final_path
-                        .file_stem()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                );
-                let lrc_path = dir.join(&lrc_name);
-                if !lrc_path.exists()
-                    && let Err(e) = self.save_lyrics(track.id, dir).await {
-                        println!("Warning: failed to save lyrics: {e}");
-                    }
+            && let Some(dir) = dest_dir
+            && let Some(text) = &lyrics_text
+            && !text.is_empty()
+        {
+            let lrc_path = dir.join(format!(
+                "{}.lrc",
+                final_path.file_stem().unwrap_or_default().to_string_lossy()
+            ));
+            if !lrc_path.exists() {
+                if let Err(e) = tokio::fs::write(&lrc_path, text).await {
+                    println!("Warning: failed to save lyrics: {e}");
+                }
             }
+        }
 
         // --- 12. Apply download delay --------------------------------------
         self.apply_download_delay().await;
@@ -420,10 +449,16 @@ impl Downloader {
 
     /// Download all items in a collection (album, playlist, or mix).
     ///
-    /// Fetches the list of tracks and downloads each one.  If
-    /// `settings.playlist_create` is enabled, also writes an `.m3u` playlist
-    /// file.
+    /// Playlist/Mix path behaviour:
+    /// - `playlist_folder` ON  → tracks saved under `Playlists/{name}/`, m3u generated
+    /// - `playlist_folder` OFF → tracks saved under `{artist}/{album}/` (deduped by skip_existing)
     pub async fn download_collection(&self, media_type: MediaType, id: &str) -> Result<()> {
+        // Resolve collection name for playlist/mix context before locking the session.
+        let collection_display_name = match media_type {
+            MediaType::Playlist | MediaType::Mix => self.collection_name(&media_type, id).await,
+            _ => None,
+        };
+
         let tracks = {
             let sess = self.session.lock().await;
             match media_type {
@@ -449,10 +484,27 @@ impl Downloader {
         let total = tracks.len();
         println!("Downloading {total} tracks...");
 
+        // Determine path context for playlist/mix tracks.
+        let (playlist_ctx, mix_ctx): (Option<String>, Option<String>) =
+            if self.settings.playlist_folder {
+                match media_type {
+                    MediaType::Playlist => (collection_display_name.clone(), None),
+                    MediaType::Mix => (None, collection_display_name.clone()),
+                    _ => (None, None),
+                }
+            } else {
+                (None, None)
+            };
+
         for (i, track) in tracks.iter().enumerate() {
             println!("[{}/{total}]", i + 1);
             if let Err(e) = self
-                .download_item(MediaType::Track, &track.id.to_string())
+                .download_item_with_context(
+                    MediaType::Track,
+                    &track.id.to_string(),
+                    playlist_ctx.as_deref(),
+                    mix_ctx.as_deref(),
+                )
                 .await
             {
                 println!(
@@ -463,23 +515,60 @@ impl Downloader {
             }
         }
 
-        // Create an M3U playlist file if configured.
-        if self.settings.playlist_create
-            && let Some(m3u_name) = self.collection_name(&media_type, id).await {
-                let base = expand_tilde(&self.settings.download_base_path);
-                let m3u_path =
-                    PathBuf::from(&base).join(&m3u_name).with_extension("m3u");
-                if let Some(parent) = m3u_path.parent() {
-                    let _ = tokio::fs::create_dir_all(parent).await;
+        // Generate m3u playlist file when playlist_folder is enabled.
+        if self.settings.playlist_folder {
+            if let Some(folder_name) = &collection_display_name {
+                if matches!(media_type, MediaType::Playlist | MediaType::Mix) {
+                    let raw = &self.settings.download_base_path;
+                    let base = if raw.starts_with("~/") {
+                        dirs::home_dir()
+                            .map(|h| h.join(&raw[2..]).to_string_lossy().into_owned())
+                            .unwrap_or_else(|| raw.clone())
+                    } else {
+                        raw.clone()
+                    };
+                    let pl_dir = PathBuf::from(&base)
+                        .join("Playlists")
+                        .join(crate::pathfmt::format::sanitize_filename(folder_name));
+                    self.write_m3u(&pl_dir, folder_name).await;
                 }
-                // Write an empty M3U header; the actual file paths are created
-                // per-track inside download_item, so we just ensure the M3U
-                // file exists as a marker.
-                let m3u_content = "#EXTM3U\n";
-                let _ = tokio::fs::write(&m3u_path, m3u_content).await;
             }
+        }
 
         Ok(())
+    }
+
+    async fn write_m3u(&self, dir: &Path, name: &str) {
+        let audio_exts = ["flac", "m4a", "mp3", "mp4"];
+        let mut entries: Vec<PathBuf> = match std::fs::read_dir(dir) {
+            Ok(rd) => rd
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension()
+                        .and_then(|e| e.to_str())
+                        .map(|e| audio_exts.contains(&e))
+                        .unwrap_or(false)
+                })
+                .collect(),
+            Err(_) => return,
+        };
+        entries.sort();
+
+        let mut m3u = String::from("#EXTM3U\n");
+        for p in &entries {
+            if let Some(fname) = p.file_name().and_then(|f| f.to_str()) {
+                m3u.push_str(fname);
+                m3u.push('\n');
+            }
+        }
+
+        let m3u_path = dir.join(format!("{}.m3u", crate::pathfmt::format::sanitize_filename(name)));
+        if let Err(e) = std::fs::write(&m3u_path, m3u) {
+            println!("Warning: could not write m3u: {e}");
+        } else {
+            println!("Playlist: {}", m3u_path.display());
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -493,7 +582,11 @@ impl Downloader {
             album_artist: track
                 .album
                 .as_ref()
-                .and_then(|a| a.artist.as_ref().map(|ar| ar.name.clone())),
+                .map(|a| {
+                    let v = a.album_artist();
+                    if v.is_empty() { track.artist_name() } else { v }
+                })
+                .or_else(|| Some(track.artist_name())),
             track_title: Some(track.title_display()),
             album_title: track.album.as_ref().map(|a| a.name.clone()),
             album_track_num: track.track_num,
@@ -513,7 +606,12 @@ impl Downloader {
     }
 
     /// Build [`AudioMetadata`] for tag writing.
-    fn build_audio_metadata(&self, track: &Track) -> AudioMetadata {
+    fn build_audio_metadata(
+        &self,
+        track: &Track,
+        cover_data: Option<Vec<u8>>,
+        lyrics: Option<String>,
+    ) -> AudioMetadata {
         AudioMetadata {
             title: Some(track.title_display()),
             album: track.album.as_ref().map(|a| a.name.clone()),
@@ -530,72 +628,61 @@ impl Downloader {
             total_tracks: track.album.as_ref().and_then(|a| a.num_tracks),
             disc_number: track.volume_num,
             total_discs: track.album.as_ref().and_then(|a| a.num_volumes),
-            date: track
-                .album
-                .as_ref()
-                .and_then(|a| a.release_date.clone()),
+            date: track.album.as_ref().and_then(|a| a.year_str()),
             isrc: track.isrc.clone(),
             url: track.share_url.clone(),
-            lyrics: None,
-            cover_data: None,
+            lyrics,
+            cover_data,
             write_replay_gain: self.settings.metadata_replay_gain,
             ..Default::default()
         }
     }
 
-    /// Download cover art to a directory as `cover.jpg`.
-    async fn download_cover(&self, cover_url: &str, dest_dir: &Path) -> Result<()> {
-        let response = self.http_client.get(cover_url).send().await?;
+    /// Fetch raw cover image bytes (used for both embedding and cover.jpg).
+    async fn fetch_cover_bytes(&self, track: &Track) -> Option<Vec<u8>> {
+        let cover_url = self.track_cover_url(track)?;
+        let response = {
+            let sess = self.session.lock().await;
+            sess.request.get_v1_raw(&cover_url).await.ok()?
+        };
         if !response.status().is_success() {
-            return Err(anyhow!(
-                "Failed to download cover: HTTP {}",
-                response.status()
-            ));
+            return None;
         }
-        let bytes = response.bytes().await?;
-        let cover_path = dest_dir.join("cover.jpg");
-        tokio::fs::write(&cover_path, &bytes).await?;
-        Ok(())
+        response.bytes().await.ok().map(|b| b.to_vec())
     }
 
-    /// Fetch and save timed lyrics as an `.lrc` file.
-    async fn save_lyrics(&self, track_id: u64, dest_dir: &Path) -> Result<()> {
+    /// Fetch lyrics and format as LRC text (used for both embedding and .lrc file).
+    async fn fetch_lyrics_text(&self, track_id: u64) -> Option<String> {
         let lyrics = {
             let sess = self.session.lock().await;
-            search::get_lyrics(&sess.request, track_id).await?
+            search::get_lyrics(&sess.request, track_id).await.ok()?
         };
 
-        let lrc_filename = format!("{}.lrc", track_id);
-        let lrc_path = dest_dir.join(&lrc_filename);
-
-        let mut content = String::new();
-
-        // Prefer the timed subtitles (LRC format).
-        if let Some(subtitles) = &lyrics.subtitles {
-            for line in subtitles {
-                if let (Some(time_ms), Some(text)) = (&line.time, &line.lrc) {
-                    // LRC timestamps are [mm:ss.xx]
-                    let total_secs = *time_ms as f64 / 1000.0;
-                    let mins = (total_secs / 60.0) as u32;
-                    let secs = total_secs - (mins as f64 * 60.0);
-                    content.push_str(&format!("[{mins:02}:{secs:05.2}]{text}\n"));
+        use crate::tidal::media::LyricsSubtitles;
+        let content = match &lyrics.subtitles {
+            Some(LyricsSubtitles::Lines(lines)) => {
+                let mut s = String::new();
+                for line in lines {
+                    if let (Some(time_ms), Some(text)) = (&line.time, &line.lrc) {
+                        let total_secs = *time_ms as f64 / 1000.0;
+                        let mins = (total_secs / 60.0) as u32;
+                        let secs = total_secs - (mins as f64 * 60.0);
+                        s.push_str(&format!("[{mins:02}:{secs:05.2}]{text}\n"));
+                    }
                 }
+                s
             }
-        } else if let Some(text) = &lyrics.text {
-            content = text.clone();
-        }
+            Some(LyricsSubtitles::Raw(raw)) => raw.clone(),
+            None => lyrics.text.clone().unwrap_or_default(),
+        };
 
-        if !content.is_empty() {
-            tokio::fs::write(&lrc_path, &content).await?;
-        }
-
-        Ok(())
+        if content.is_empty() { None } else { Some(content) }
     }
 
     /// Resolve the cover-art URL for a track (from its album cover UUID).
     fn track_cover_url(&self, track: &Track) -> Option<String> {
         let album = track.album.as_ref()?;
-        let cover_uuid = album.cover.as_ref()?;
+        let cover_uuid = album.cover.as_ref()?.replace('-', "/");
         let dimension = self.cover_dimension_string();
         Some(format!(
             "https://resources.tidal.com/images/{cover_uuid}/{dimension}.jpg"
@@ -715,10 +802,10 @@ impl Downloader {
         let pb = ProgressBar::new(total);
         pb.set_style(
             ProgressStyle::with_template(
-                "{msg}\n{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} ({eta})",
+                "  {msg:.bold}\n  {bar:36.white/237} {pos}/{len}  {eta}",
             )
             .unwrap_or_else(|_| ProgressStyle::default_bar())
-            .progress_chars("#>-"),
+            .progress_chars("█▓░"),
         );
         pb.set_message(title.to_string());
         pb
