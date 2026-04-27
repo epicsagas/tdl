@@ -71,7 +71,7 @@ jobs:
       contents: read
     env:
       # Set in repo variables, example: epicsagas/tdl-binaries
-      PUBLIC_RELEASE_REPO: epicsagas/tools
+      PUBLIC_RELEASE_REPO: ${{ vars.PUBLIC_RELEASE_REPO }}
       # Set in repo secrets: PAT with write access to PUBLIC_RELEASE_REPO
       PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
     steps:
