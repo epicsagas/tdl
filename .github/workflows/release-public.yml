@@ -21,6 +21,7 @@ env:
 jobs:
   build:
     name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,28 +30,22 @@ jobs:
             target: aarch64-apple-darwin
             os_name: darwin
             arch: arm64
-            bundles: app,dmg
           - os: macos-13
             target: x86_64-apple-darwin
             os_name: darwin
             arch: amd64
-            bundles: app,dmg
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             os_name: linux
             arch: amd64
-            bundles: deb,appimage
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             os_name: linux
             arch: arm64
-            bundles: deb,appimage
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             os_name: windows
             arch: amd64
-            bundles: msi,nsis
-    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -60,6 +55,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ matrix.target }}-cargo-
 
       - name: Install Linux dependencies
         if: startsWith(matrix.os, 'ubuntu')
@@ -89,26 +94,46 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "ver=${VER}" >> "$GITHUB_OUTPUT"
 
-      - name: Build (Tauri)
-        run: cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Build binary + GUI bundle
+        run: cargo tauri build --target ${{ matrix.target }}
 
-      - name: Collect artifacts (macOS)
+      - name: Package (Unix)
+        if: matrix.os_name != 'windows'
+        shell: bash
+        run: |
+          VER="${{ steps.version.outputs.ver }}"
+          STEM="tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}"
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/tdl dist/tdl
+          tar -czf "dist/${STEM}.tar.gz" -C dist tdl
+          rm dist/tdl
+          echo "TARBALL=${STEM}.tar.gz" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: matrix.os_name == 'windows'
+        shell: bash
+        run: |
+          VER="${{ steps.version.outputs.ver }}"
+          STEM="tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}"
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/tdl.exe dist/tdl.exe
+          cd dist && 7z a "${STEM}.zip" tdl.exe && rm tdl.exe && cd ..
+          echo "ZIPFILE=${STEM}.zip" >> "$GITHUB_ENV"
+
+      - name: Collect GUI bundles (macOS)
         if: matrix.os_name == 'darwin'
         shell: bash
         run: |
           VER="${{ steps.version.outputs.ver }}"
-          mkdir -p dist
-          # DMG
           find target/${{ matrix.target }}/release/bundle/dmg -name "*.dmg" | while read f; do
             cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.dmg"
           done
 
-      - name: Collect artifacts (Linux)
+      - name: Collect GUI bundles (Linux)
         if: matrix.os_name == 'linux'
         shell: bash
         run: |
           VER="${{ steps.version.outputs.ver }}"
-          mkdir -p dist
           find target/${{ matrix.target }}/release/bundle/deb -name "*.deb" | while read f; do
             cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.deb"
           done
@@ -116,12 +141,11 @@ jobs:
             cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.AppImage"
           done
 
-      - name: Collect artifacts (Windows)
+      - name: Collect GUI bundles (Windows)
         if: matrix.os_name == 'windows'
         shell: bash
         run: |
           VER="${{ steps.version.outputs.ver }}"
-          mkdir -p dist
           find target/${{ matrix.target }}/release/bundle/msi -name "*.msi" | while read f; do
             cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.msi"
           done
@@ -191,13 +215,100 @@ jobs:
               --title "$RELEASE_TAG" \
               --notes "Automated binary release from private source repository."
           fi
-
           mapfile -t FILES < <(find downloaded-artifacts -type f | sort)
-          if [ "${#FILES[@]}" -eq 0 ]; then
-            echo "No files found to upload."
-            exit 1
-          fi
-
+          [ "${#FILES[@]}" -eq 0 ] && echo "No files found." && exit 1
           gh release upload "$RELEASE_TAG" "${FILES[@]}" \
             --repo "$PUBLIC_RELEASE_REPO" \
             --clobber
+
+  update-homebrew:
+    name: Update Homebrew Tap
+    needs: publish
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: artifacts
+
+      - name: Compute SHA256
+        id: sha
+        run: |
+          echo "darwin_arm=$(sha256sum artifacts/tdl_*_darwin_arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "darwin_amd=$(sha256sum artifacts/tdl_*_darwin_amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux_arm=$(sha256sum artifacts/tdl_*_linux_arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          echo "linux_amd=$(sha256sum artifacts/tdl_*_linux_amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VER="${TAG#tdl-v}"
+          VER="${VER#v}"
+          echo "ver=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout homebrew tap
+        uses: actions/checkout@v4
+        with:
+          repository: epicsagas/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update formula
+        env:
+          VER: ${{ steps.version.outputs.ver }}
+          TAG: ${{ steps.version.outputs.tag }}
+          SHA_DARWIN_ARM: ${{ steps.sha.outputs.darwin_arm }}
+          SHA_DARWIN_AMD: ${{ steps.sha.outputs.darwin_amd }}
+          SHA_LINUX_ARM: ${{ steps.sha.outputs.linux_arm }}
+          SHA_LINUX_AMD: ${{ steps.sha.outputs.linux_amd }}
+        run: |
+          cat > Formula/tdl.rb << RUBY
+          class Tdl < Formula
+            desc "Tidal music downloader — tracks, albums, playlists, mixes, and videos"
+            homepage "https://github.com/epicsagas/tools"
+            version "${VER}"
+            license "Apache-2.0"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_darwin_arm64.tar.gz"
+                sha256 "${SHA_DARWIN_ARM}"
+              else
+                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_darwin_amd64.tar.gz"
+                sha256 "${SHA_DARWIN_AMD}"
+              end
+            end
+
+            on_linux do
+              if Hardware::CPU.arm?
+                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_linux_arm64.tar.gz"
+                sha256 "${SHA_LINUX_ARM}"
+              else
+                url "https://github.com/epicsagas/tools/releases/download/${TAG}/tdl_${VER}_linux_amd64.tar.gz"
+                sha256 "${SHA_LINUX_AMD}"
+              end
+            end
+
+            def install
+              bin.install "tdl"
+            end
+
+            test do
+              assert_match "tdl", shell_output("#{bin}/tdl --version 2>&1")
+            end
+          end
+          RUBY
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/tdl.rb
+          git diff --cached --quiet || git commit -m "tdl ${{ steps.version.outputs.ver }}"
+          git push
