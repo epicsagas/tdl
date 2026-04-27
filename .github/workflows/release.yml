@@ -31,7 +31,7 @@ jobs:
             os_name: darwin
             arch: arm64
             bundles: app
-          - os: macos-13
+          - os: macos-14
             target: x86_64-apple-darwin
             os_name: darwin
             arch: amd64
@@ -55,6 +55,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
