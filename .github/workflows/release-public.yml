@@ -26,11 +26,17 @@ jobs:
       matrix:
         include:
           - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
             artifact_name: tdl-linux-x86_64
+            binary: tdl
           - os: macos-14
+            target: aarch64-apple-darwin
             artifact_name: tdl-macos-aarch64
+            binary: tdl
           - os: windows-2022
+            target: x86_64-pc-windows-msvc
             artifact_name: tdl-windows-x86_64
+            binary: tdl.exe
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -39,22 +45,29 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install cargo-dist
-        uses: taiki-e/install-action@v2
         with:
-          tool: cargo-dist@0.31.0
+          targets: ${{ matrix.target }}
 
-      - name: Build dist artifacts
-        run: cargo dist build --artifacts=local --output-format=json
+      - name: Install Linux GUI dependencies
+        if: matrix.os == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
-      - name: Collect artifacts
+      - name: Build (GUI)
+        run: cargo build --release --features gui --target ${{ matrix.target }}
+
+      - name: Package artifact
         shell: bash
         run: |
           mkdir -p release-artifacts
-          if [ -d dist ]; then
-            cp -R dist/* release-artifacts/
-          fi
+          BIN="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          cp "$BIN" "release-artifacts/${{ matrix.artifact_name }}${{ matrix.os == 'windows-2022' && '.exe' || '' }}"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -70,9 +83,7 @@ jobs:
     permissions:
       contents: read
     env:
-      # Set in repo variables, example: epicsagas/tdl-binaries
       PUBLIC_RELEASE_REPO: ${{ vars.PUBLIC_RELEASE_REPO }}
-      # Set in repo secrets: PAT with write access to PUBLIC_RELEASE_REPO
       PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
     steps:
       - name: Validate required configuration
