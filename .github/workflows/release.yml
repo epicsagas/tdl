@@ -19,14 +19,14 @@ env:
 
 jobs:
   build-windows:
-    name: Build Windows (amd64)
-    runs-on: windows-2025
+    name: Build Windows (arm64)
+    runs-on: [self-hosted, windows, ARM64]
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: aarch64-pc-windows-msvc
 
       - uses: actions/cache@v4
         with:
@@ -41,7 +41,7 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build
-        run: cargo tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis
+        run: cargo tauri build --target aarch64-pc-windows-msvc --bundles msi,nsis
 
       - name: Resolve version
         id: ver
@@ -63,21 +63,21 @@ jobs:
           mkdir -p dist
 
           # CLI binary
-          cp target/x86_64-pc-windows-msvc/release/tdl.exe dist/tdl.exe
-          cd dist && 7z a "tdl_${VER}_windows_amd64.zip" tdl.exe && rm tdl.exe && cd ..
+          cp target/aarch64-pc-windows-msvc/release/tdl.exe dist/tdl.exe
+          cd dist && 7z a "tdl_${VER}_windows_arm64.zip" tdl.exe && rm tdl.exe && cd ..
 
           # MSI installer
-          find target/x86_64-pc-windows-msvc/release/bundle/msi -name "*.msi" | head -1 | \
-              xargs -I{} cp {} "dist/tdl_${VER}_windows_amd64.msi"
+          find target/aarch64-pc-windows-msvc/release/bundle/msi -name "*.msi" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_arm64.msi"
 
           # NSIS installer
-          find target/x86_64-pc-windows-msvc/release/bundle/nsis -name "*.exe" | head -1 | \
-              xargs -I{} cp {} "dist/tdl_${VER}_windows_amd64-setup.exe"
+          find target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*.exe" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_arm64-setup.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tdl-windows-amd64
+          name: tdl-windows-arm64
           path: dist/
           if-no-files-found: error
 
@@ -111,7 +111,7 @@ jobs:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: tdl-windows-amd64
+          name: tdl-windows-arm64
           path: dist/
 
       - name: Publish
