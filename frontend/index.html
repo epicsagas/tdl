@@ -210,6 +210,9 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 #player-vol-wrap { display:flex; align-items:center; gap:6px; flex-shrink:0; }
 #player-vol { width:70px; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px; background:var(--bg3); cursor:pointer; }
 #player-vol::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--text2); cursor:pointer; }
+#player-dsp-wrap { display:flex; align-items:center; gap:2px; flex-shrink:0; margin-left:8px; border-left:1px solid var(--border); padding-left:10px; }
+.dsp-btn { font-size:11px !important; padding:3px 7px !important; border-radius:10px !important; color:var(--text2) !important; }
+.dsp-btn.active { background:var(--bg3) !important; color:var(--accent) !important; box-shadow:0 0 0 1px var(--accent); }
 .track-row-play { cursor:pointer; }
 .track-row-play:hover td { background:var(--bg3) !important; }
 td.td-play-icon { width:20px; color:var(--text2); font-size:11px; text-align:center; }
@@ -702,6 +705,12 @@ tr.playing td { color:var(--accent) !important; }
         <button class="p-btn" id="p-mute" title="Mute" onclick="playerMute()">&#128266;</button>
         <input type="range" id="player-vol" min="0" max="1" step="0.02" value="0.8">
     </div>
+    <div id="player-dsp-wrap">
+        <button class="p-btn dsp-btn" id="dsp-off"    onclick="setDsp('off')"   title="No effect">Off</button>
+        <button class="p-btn dsp-btn" id="dsp-vinyl"  onclick="setDsp('vinyl')" title="Vinyl">&#9900;</button>
+        <button class="p-btn dsp-btn" id="dsp-tape"   onclick="setDsp('tape')"  title="Tape">&#9646;</button>
+        <button class="p-btn dsp-btn" id="dsp-tube"   onclick="setDsp('tube')"  title="Tube">&#9651;</button>
+    </div>
 </div>
 <audio id="player-audio"></audio>
 
@@ -1074,6 +1083,169 @@ document.getElementById('player-vol').addEventListener('input', e => {
     audio.muted = false;
     document.getElementById('p-mute').innerHTML = '&#128266;';
 });
+
+// ---- DSP Engine ----
+let _actx = null;       // AudioContext (lazy init)
+let _srcNode = null;    // MediaElementSourceNode
+let _dspMode = 'off';
+let _dspNodes = [];     // active DSP nodes chain
+let _noiseNode = null;  // vinyl noise source
+let _noiseGain = null;
+
+function _ensureAudioContext() {
+    if (_actx) return;
+    _actx = new (window.AudioContext || window.webkitAudioContext)();
+    _srcNode = _actx.createMediaElementSource(audio);
+    _srcNode.connect(_actx.destination); // default: bypass
+}
+
+// Build a waveshaper curve for harmonic distortion
+// amount: 0-400; even=true produces even harmonics (tube-like)
+function _makeDistortionCurve(amount, even = false) {
+    const n = 256, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+        const x = (i * 2) / n - 1;
+        if (even) {
+            // soft even-harmonic saturation
+            curve[i] = x - (x * x * x) / 3 + (x * x) * amount / 800;
+        } else {
+            // asymmetric tape-style saturation
+            curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
+        }
+    }
+    return curve;
+}
+
+// White noise buffer for vinyl crackle
+function _makeNoiseBuffer() {
+    const bufSize = _actx.sampleRate * 2;
+    const buf = _actx.createBuffer(1, bufSize, _actx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    return buf;
+}
+
+function _teardownDsp() {
+    if (_noiseNode) { try { _noiseNode.stop(); } catch(_) {} _noiseNode = null; }
+    if (_noiseGain) { _noiseGain.disconnect(); _noiseGain = null; }
+    _dspNodes.forEach(n => { try { n.disconnect(); } catch(_) {} });
+    _dspNodes = [];
+    if (_srcNode) { _srcNode.disconnect(); _srcNode.connect(_actx.destination); }
+}
+
+function _applyVinyl() {
+    // Chain: src → highpass → shaper → lowpass → output
+    const hp = _actx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 40;
+
+    const shaper = _actx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(60);
+    shaper.oversample = '2x';
+
+    const lp = _actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 14000; lp.Q.value = 0.5;
+
+    const out = _actx.createGain();
+    out.gain.value = 0.92;
+
+    _srcNode.disconnect();
+    _srcNode.connect(hp); hp.connect(shaper); shaper.connect(lp); lp.connect(out); out.connect(_actx.destination);
+
+    // Crackle noise layer
+    _noiseGain = _actx.createGain();
+    _noiseGain.gain.value = 0.012;
+    const noiseFilter = _actx.createBiquadFilter();
+    noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1000; noiseFilter.Q.value = 0.3;
+    _noiseNode = _actx.createBufferSource();
+    _noiseNode.buffer = _makeNoiseBuffer();
+    _noiseNode.loop = true;
+    _noiseNode.connect(noiseFilter); noiseFilter.connect(_noiseGain); _noiseGain.connect(_actx.destination);
+    _noiseNode.start();
+
+    _dspNodes = [hp, shaper, lp, out, noiseFilter];
+}
+
+function _applyTape() {
+    // Chain: src → shaper (saturation) → lowpass (head roll-off) → output
+    const shaper = _actx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(120, false);
+    shaper.oversample = '4x';
+
+    const lp = _actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 16000; lp.Q.value = 0.7;
+
+    const presence = _actx.createBiquadFilter();
+    presence.type = 'peaking'; presence.frequency.value = 3000;
+    presence.gain.value = -1.5; presence.Q.value = 1.0;
+
+    const out = _actx.createGain();
+    out.gain.value = 0.88;
+
+    _srcNode.disconnect();
+    _srcNode.connect(shaper); shaper.connect(lp); lp.connect(presence); presence.connect(out); out.connect(_actx.destination);
+    _dspNodes = [shaper, lp, presence, out];
+}
+
+function _applyTube() {
+    // Chain: src → even-harmonic shaper → mid-boost → output
+    const shaper = _actx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(40, true);
+    shaper.oversample = '4x';
+
+    const midBoost = _actx.createBiquadFilter();
+    midBoost.type = 'peaking'; midBoost.frequency.value = 800;
+    midBoost.gain.value = 2.0; midBoost.Q.value = 0.8;
+
+    const warmth = _actx.createBiquadFilter();
+    warmth.type = 'lowshelf'; warmth.frequency.value = 250; warmth.gain.value = 1.5;
+
+    const out = _actx.createGain();
+    out.gain.value = 0.90;
+
+    _srcNode.disconnect();
+    _srcNode.connect(shaper); shaper.connect(midBoost); midBoost.connect(warmth); warmth.connect(out); out.connect(_actx.destination);
+    _dspNodes = [shaper, midBoost, warmth, out];
+}
+
+function setDsp(mode) {
+    _ensureAudioContext();
+    if (_actx.state === 'suspended') _actx.resume();
+    _teardownDsp();
+    _dspMode = mode;
+
+    if (mode === 'vinyl') _applyVinyl();
+    else if (mode === 'tape') _applyTape();
+    else if (mode === 'tube') _applyTube();
+
+    // Update button active state
+    document.querySelectorAll('.dsp-btn').forEach(b => b.classList.remove('active'));
+    const active = document.getElementById(`dsp-${mode}`);
+    if (active) active.classList.add('active');
+
+    // Persist selection
+    try { localStorage.setItem('dspMode', mode); } catch(_) {}
+}
+
+// Restore DSP mode on first play
+audio.addEventListener('play', () => {
+    if (!_actx) {
+        const saved = localStorage.getItem('dspMode') || 'off';
+        if (saved !== 'off') setDsp(saved);
+        else {
+            document.getElementById('dsp-off').classList.add('active');
+        }
+    } else if (_actx.state === 'suspended') {
+        _actx.resume();
+    }
+}, { once: false });
+
+// Init active button on load
+(function() {
+    const saved = localStorage.getItem('dspMode') || 'off';
+    _dspMode = saved;
+    const btn = document.getElementById(`dsp-${saved}`);
+    if (btn) btn.classList.add('active');
+})();
 
 function showToast(msg, type = 'info', duration = 4000) {
     const c = document.getElementById('toast-container');
