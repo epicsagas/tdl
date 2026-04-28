@@ -213,6 +213,11 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 #player-dsp-wrap { display:flex; align-items:center; gap:2px; flex-shrink:0; margin-left:8px; border-left:1px solid var(--border); padding-left:10px; }
 .dsp-btn { padding:4px 5px !important; border-radius:6px !important; color:var(--text2) !important; line-height:0; }
 .dsp-btn.active { background:var(--bg3) !important; color:var(--accent) !important; box-shadow:0 0 0 1px var(--accent); }
+#dsp-intensity-wrap { display:flex; align-items:center; gap:5px; margin-left:6px; opacity:0.35; transition:opacity .2s; }
+#dsp-intensity-wrap.active { opacity:1; }
+#dsp-intensity { width:56px; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px; background:var(--bg3); cursor:pointer; }
+#dsp-intensity::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--accent); cursor:pointer; }
+#dsp-intensity-label { font-size:10px; color:var(--text2); width:26px; text-align:right; flex-shrink:0; }
 .track-row-play { cursor:pointer; }
 .track-row-play:hover td { background:var(--bg3) !important; }
 td.td-play-icon { width:20px; color:var(--text2); font-size:11px; text-align:center; }
@@ -743,6 +748,11 @@ tr.playing td { color:var(--accent) !important; }
             </svg>
         </button>
     </div>
+    <div id="dsp-intensity-wrap">
+        <input type="range" id="dsp-intensity" min="0" max="1" step="0.01" value="0.5"
+               title="DSP Intensity" oninput="setDspIntensity(+this.value)">
+        <span id="dsp-intensity-label">50%</span>
+    </div>
 </div>
 <audio id="player-audio"></audio>
 
@@ -1121,6 +1131,7 @@ let _actx = null;
 let _srcNode = null;
 let _dspMode = 'off';
 let _dspNodes = [];
+let _dspIntensity = 0.5; // 0.0 = minimal effect, 1.0 = full effect
 
 function _ensureAudioContext() {
     if (_actx) return;
@@ -1205,21 +1216,27 @@ function _teardownDsp() {
 // (real or offline) and returns the final node before the destination.
 // The out GainNode is created but its gain is set by the caller after RMS measurement.
 
-function _buildVinylChain(ctx, input) {
+// intensity t ∈ [0,1]: scales drive and EQ gains linearly.
+// t=0.5 reproduces the original tuned values; t=0 → near-bypass; t=1 → 2× effect.
+function _scaled(base, t) { return base * (t * 2); }
+
+function _buildVinylChain(ctx, input, t = 0.5) {
     const tonearm = ctx.createBiquadFilter();
     tonearm.type = 'highpass'; tonearm.frequency.value = 22; tonearm.Q.value = 0.8;
 
     const body = ctx.createBiquadFilter();
-    body.type = 'peaking'; body.frequency.value = 250; body.gain.value = 1.8; body.Q.value = 0.9;
+    body.type = 'peaking'; body.frequency.value = 250;
+    body.gain.value = _scaled(1.8, t); body.Q.value = 0.9;
 
     const riaa = ctx.createBiquadFilter();
-    riaa.type = 'highshelf'; riaa.frequency.value = 3200; riaa.gain.value = -2.5;
+    riaa.type = 'highshelf'; riaa.frequency.value = 3200;
+    riaa.gain.value = _scaled(-2.5, t);
 
     const cartridge = ctx.createBiquadFilter();
     cartridge.type = 'lowpass'; cartridge.frequency.value = 15000; cartridge.Q.value = 0.6;
 
     const shaper = ctx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(18, false);
+    shaper.curve = _makeDistortionCurve(_scaled(18, t), false);
     shaper.oversample = '4x';
 
     input.connect(tonearm);
@@ -1227,40 +1244,40 @@ function _buildVinylChain(ctx, input) {
     return { last: shaper, nodes: [tonearm, body, riaa, cartridge, shaper] };
 }
 
-function _buildTapeChain(ctx, input) {
+function _buildTapeChain(ctx, input, t = 0.5) {
     const shaper = ctx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(45, false);
+    shaper.curve = _makeDistortionCurve(_scaled(45, t), false);
     shaper.oversample = '4x';
 
     const lowBody = ctx.createBiquadFilter();
-    lowBody.type = 'peaking'; lowBody.frequency.value = 100; lowBody.gain.value = 1.2; lowBody.Q.value = 0.7;
+    lowBody.type = 'peaking'; lowBody.frequency.value = 100;
+    lowBody.gain.value = _scaled(1.2, t); lowBody.Q.value = 0.7;
 
     const presence = ctx.createBiquadFilter();
-    presence.type = 'peaking'; presence.frequency.value = 2500; presence.gain.value = 1.0; presence.Q.value = 1.0;
+    presence.type = 'peaking'; presence.frequency.value = 2500;
+    presence.gain.value = _scaled(1.0, t); presence.Q.value = 1.0;
 
     const headRolloff = ctx.createBiquadFilter();
-    headRolloff.type = 'lowshelf'; headRolloff.frequency.value = 12000; headRolloff.gain.value = -1.5;
+    headRolloff.type = 'lowshelf'; headRolloff.frequency.value = 12000;
+    headRolloff.gain.value = _scaled(-1.5, t);
 
     input.connect(shaper);
     shaper.connect(lowBody); lowBody.connect(presence); presence.connect(headRolloff);
     return { last: headRolloff, nodes: [shaper, lowBody, presence, headRolloff] };
 }
 
-function _buildTubeChain(ctx, input) {
-    // Asymmetric tanh: positive half clips harder than negative → 2nd harmonic
+function _buildTubeChain(ctx, input, t = 0.5) {
     const shaper = ctx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(30, true);
+    shaper.curve = _makeDistortionCurve(_scaled(30, t), true);
     shaper.oversample = '4x';
 
-    // Transformer-coupled low-end: tubes run through output transformers that
-    // add low-mid density around 150-300 Hz.
     const transformer = ctx.createBiquadFilter();
-    transformer.type = 'peaking'; transformer.frequency.value = 200; transformer.gain.value = 1.5; transformer.Q.value = 0.8;
+    transformer.type = 'peaking'; transformer.frequency.value = 200;
+    transformer.gain.value = _scaled(1.5, t); transformer.Q.value = 0.8;
 
-    // Triode plate characteristic: gentle high-frequency roll-off above ~8 kHz,
-    // not because tubes are dull but because inter-electrode capacitance limits HF.
     const plateRolloff = ctx.createBiquadFilter();
-    plateRolloff.type = 'highshelf'; plateRolloff.frequency.value = 8000; plateRolloff.gain.value = -1.8;
+    plateRolloff.type = 'highshelf'; plateRolloff.frequency.value = 8000;
+    plateRolloff.gain.value = _scaled(-1.8, t);
 
     input.connect(shaper);
     shaper.connect(transformer); transformer.connect(plateRolloff);
@@ -1268,20 +1285,17 @@ function _buildTubeChain(ctx, input) {
 }
 
 async function _applyDspChain(builder) {
-    // Step 1: measure RMS gain introduced by this chain using OfflineAudioContext.
-    // A dummy source node is passed so the builder can wire itself identically.
+    const t = _dspIntensity;
     const compGain = await _measureCompensationGain((offCtx, offSrc) => {
-        const { last } = builder(offCtx, offSrc);
+        const { last } = builder(offCtx, offSrc, t);
         return last;
     });
 
-    // Step 2: build the real-time chain. _teardownDsp() already called by setDsp()
-    // so _srcNode is disconnected. Re-wire: src → chain → gainComp → destination.
-    const dummy = _actx.createGain(); // acts as the "input" node for builder
+    const dummy = _actx.createGain();
     dummy.gain.value = 1;
     _srcNode.connect(dummy);
 
-    const { last, nodes } = builder(_actx, dummy);
+    const { last, nodes } = builder(_actx, dummy, t);
 
     const out = _actx.createGain();
     out.gain.value = compGain;
@@ -1294,6 +1308,20 @@ async function _applyDspChain(builder) {
 async function _applyVinyl() { await _applyDspChain(_buildVinylChain); }
 async function _applyTape()  { await _applyDspChain(_buildTapeChain);  }
 async function _applyTube()  { await _applyDspChain(_buildTubeChain);  }
+
+async function setDspIntensity(val) {
+    _dspIntensity = val;
+    const pct = Math.round(val * 100);
+    document.getElementById('dsp-intensity-label').textContent = pct + '%';
+    try { localStorage.setItem('dspIntensity', val); } catch(_) {}
+    // Re-apply the current chain with the new intensity
+    if (_dspMode !== 'off' && _actx) {
+        _teardownDsp();
+        if (_dspMode === 'vinyl') await _applyVinyl();
+        else if (_dspMode === 'tape') await _applyTape();
+        else if (_dspMode === 'tube') await _applyTube();
+    }
+}
 
 async function setDsp(mode) {
     _ensureAudioContext();
@@ -1308,6 +1336,9 @@ async function setDsp(mode) {
     document.querySelectorAll('.dsp-btn').forEach(b => b.classList.remove('active'));
     const active = document.getElementById(`dsp-${mode}`);
     if (active) active.classList.add('active');
+
+    document.getElementById('dsp-intensity-wrap')
+        .classList.toggle('active', mode !== 'off');
 
     try { localStorage.setItem('dspMode', mode); } catch(_) {}
 }
@@ -1325,12 +1356,25 @@ audio.addEventListener('play', () => {
     }
 }, { once: false });
 
-// Init active button on load
+// Init DSP state on load
 (function() {
-    const saved = localStorage.getItem('dspMode') || 'off';
-    _dspMode = saved;
-    const btn = document.getElementById(`dsp-${saved}`);
+    const savedMode = localStorage.getItem('dspMode') || 'off';
+    _dspMode = savedMode;
+    const btn = document.getElementById(`dsp-${savedMode}`);
     if (btn) btn.classList.add('active');
+
+    const savedIntensity = parseFloat(localStorage.getItem('dspIntensity'));
+    if (!isNaN(savedIntensity)) {
+        _dspIntensity = savedIntensity;
+        const slider = document.getElementById('dsp-intensity');
+        if (slider) slider.value = savedIntensity;
+        const label = document.getElementById('dsp-intensity-label');
+        if (label) label.textContent = Math.round(savedIntensity * 100) + '%';
+    }
+
+    // Activate slider only when a DSP mode is selected
+    const wrap = document.getElementById('dsp-intensity-wrap');
+    if (wrap && savedMode !== 'off') wrap.classList.add('active');
 })();
 
 function showToast(msg, type = 'info', duration = 4000) {
