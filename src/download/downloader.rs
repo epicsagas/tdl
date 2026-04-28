@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context, Result};
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::RngExt;
 use tokio::sync::Mutex;
 
@@ -109,7 +109,7 @@ impl Downloader {
     /// 10. Save cover art and lyrics files
     /// 11. Apply download delay
     pub async fn download_item(&self, media_type: MediaType, id: &str) -> Result<()> {
-        self.download_item_with_context(media_type, id, None, None).await
+        self.download_item_with_context(media_type, id, None, None, None).await
     }
 
     async fn download_item_with_context(
@@ -118,6 +118,7 @@ impl Downloader {
         id: &str,
         playlist_name: Option<&str>,
         mix_name: Option<&str>,
+        track_pb: Option<&ProgressBar>,
     ) -> Result<()> {
         let numeric_id: u64 = id.parse().context("Invalid media ID")?;
 
@@ -129,7 +130,9 @@ impl Downloader {
 
         let title = track.title_display();
         let artist = track.artist_name();
-        println!("Downloading: {artist} - {title}");
+        if track_pb.is_none() {
+            println!("Downloading: {artist} - {title}");
+        }
 
         // --- 2. Build destination path -------------------------------------
         let mut media_info = self.build_media_info(&track);
@@ -149,7 +152,12 @@ impl Downloader {
         let audio_extensions = ["flac", "m4a", "mp3", "mp4", "ts"];
         if self.settings.skip_existing
             && let Some(existing) = check_file_exists(&stem_path, &audio_extensions) {
-                println!("Skipping (already exists): {}", existing.display());
+                if let Some(pb) = track_pb {
+                    pb.set_message(format!("⏭  {artist} - {title}"));
+                    pb.finish();
+                } else {
+                    println!("Skipping (already exists): {}", existing.display());
+                }
                 self.apply_download_delay().await;
                 return Ok(());
             }
@@ -209,18 +217,30 @@ impl Downloader {
         );
         let temp_path = temp_dir.join(&temp_file_name);
 
-        let pb = self.create_progress_bar(manifest.urls.len() as u64, &title);
+        let seg_total = manifest.urls.len() as u64;
+        let owned_pb;
+        let pb: &ProgressBar = if let Some(pb) = track_pb {
+            pb.set_length(seg_total);
+            pb.set_message(format!("↓  {artist} - {title}"));
+            pb.set_position(0);
+            pb
+        } else {
+            owned_pb = self.create_progress_bar(seg_total, &title);
+            &owned_pb
+        };
 
         segment::download_and_merge(
             &manifest.urls,
             &temp_path,
             &self.http_client,
             self.settings.downloads_simultaneous_per_track_max,
-            Some(&pb),
+            Some(pb),
         )
         .await?;
 
-        pb.finish_and_clear();
+        if track_pb.is_none() {
+            pb.finish_and_clear();
+        }
 
         // --- 6. Decrypt if encrypted ---------------------------------------
         if manifest.is_encrypted
@@ -332,7 +352,12 @@ impl Downloader {
             }
         }
 
-        println!("Saved: {}", final_path.display());
+        if let Some(pb) = track_pb {
+            pb.set_message(format!("✓  {artist} - {title}"));
+            pb.finish();
+        } else {
+            println!("Saved: {}", final_path.display());
+        }
 
         // --- 13. Save .lrc file --------------------------------------------
         if self.settings.lyrics_file
@@ -480,7 +505,6 @@ impl Downloader {
         };
 
         let total = tracks.len();
-        println!("Downloading {total} tracks...");
 
         // Determine path context for playlist/mix tracks.
         let (playlist_ctx, mix_ctx): (Option<String>, Option<String>) =
@@ -494,24 +518,79 @@ impl Downloader {
                 (None, None)
             };
 
+        // Build a MultiProgress queue showing all tracks.
+        let mp = MultiProgress::new();
+
+        // Header bar.
+        let header_style = ProgressStyle::with_template("{msg}").unwrap();
+        let header = mp.add(ProgressBar::new(total as u64));
+        header.set_style(header_style.clone());
+        let collection_label = collection_display_name
+            .as_deref()
+            .unwrap_or(match media_type {
+                MediaType::Album => "Album",
+                MediaType::Playlist => "Playlist",
+                MediaType::Mix => "Mix",
+                _ => "Collection",
+            });
+        header.set_message(format!("{collection_label}  ({total} tracks)"));
+
+        // One progress bar per track — initially shows the track title as waiting.
+        let track_style = ProgressStyle::with_template("  {msg}  {bar:30.cyan/white} {pos}/{len}")
+            .unwrap()
+            .progress_chars("█░░");
+        let waiting_style = ProgressStyle::with_template("  {msg}").unwrap();
+
+        let track_pbs: Vec<ProgressBar> = tracks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let pb = mp.add(ProgressBar::new(0));
+                pb.set_style(waiting_style.clone());
+                let num = format!("{:02}", i + 1);
+                pb.set_message(format!("·  {num}. {} - {}", t.artist_name(), t.title_display()));
+                pb
+            })
+            .collect();
+
+        // Footer bar.
+        let footer = mp.add(ProgressBar::new(total as u64));
+        footer.set_style(ProgressStyle::with_template("  {msg}").unwrap());
+        footer.set_message(format!("0/{total} completed"));
+
         for (i, track) in tracks.iter().enumerate() {
-            println!("[{}/{total}]", i + 1);
-            if let Err(e) = self
+            let pb = &track_pbs[i];
+            let num = format!("{:02}", i + 1);
+            let label = format!("{num}. {} - {}", track.artist_name(), track.title_display());
+
+            // Switch to active style.
+            pb.set_style(track_style.clone());
+            pb.set_message(format!("↓  {label}"));
+
+            let result = self
                 .download_item_with_context(
                     MediaType::Track,
                     &track.id.to_string(),
                     playlist_ctx.as_deref(),
                     mix_ctx.as_deref(),
+                    Some(pb),
                 )
-                .await
-            {
-                println!(
-                    "Warning: failed to download track {} ({}): {e}",
-                    track.id,
-                    track.title_display()
-                );
+                .await;
+
+            if let Err(e) = result {
+                pb.set_style(waiting_style.clone());
+                pb.set_message(format!("✗  {label}  ({e})"));
+                pb.finish();
+                tracing::warn!("Failed to download track {} ({}): {e}", track.id, track.title_display());
             }
+
+            let completed = i + 1;
+            let remaining = total - completed;
+            footer.set_message(format!("{completed}/{total} completed  ·  {remaining} remaining"));
         }
+
+        footer.set_message(format!("{total}/{total} completed"));
+        footer.finish();
 
         // Generate m3u playlist file when playlist_folder is enabled.
         if self.settings.playlist_folder
