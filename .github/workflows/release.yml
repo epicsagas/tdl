@@ -19,14 +19,23 @@ env:
 
 jobs:
   build-windows:
-    name: Build Windows (arm64)
+    name: Build Windows (${{ matrix.arch }})
     runs-on: [self-hosted, windows, ARM64]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+          - arch: amd64
+            target: x86_64-pc-windows-msvc
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-pc-windows-msvc
+          targets: ${{ matrix.target }}
 
       - uses: actions/cache@v4
         with:
@@ -34,14 +43,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: windows-amd64-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: windows-amd64-cargo-
+          key: windows-${{ matrix.arch }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-${{ matrix.arch }}-cargo-
 
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build
-        run: cargo tauri build --target aarch64-pc-windows-msvc --bundles msi,nsis
+        run: cargo tauri build --target ${{ matrix.target }} --bundles msi,nsis
 
       - name: Resolve version
         id: ver
@@ -60,24 +69,26 @@ jobs:
         shell: bash
         run: |
           VER="${{ steps.ver.outputs.ver }}"
+          TARGET="${{ matrix.target }}"
+          ARCH="${{ matrix.arch }}"
           mkdir -p dist
 
           # CLI binary
-          cp target/aarch64-pc-windows-msvc/release/tdl.exe dist/tdl.exe
-          cd dist && 7z a "tdl_${VER}_windows_arm64.zip" tdl.exe && rm tdl.exe && cd ..
+          cp "target/${TARGET}/release/tdl.exe" dist/tdl.exe
+          cd dist && 7z a "tdl_${VER}_windows_${ARCH}.zip" tdl.exe && rm tdl.exe && cd ..
 
           # MSI installer
-          find target/aarch64-pc-windows-msvc/release/bundle/msi -name "*.msi" | head -1 | \
-              xargs -I{} cp {} "dist/tdl_${VER}_windows_arm64.msi"
+          find "target/${TARGET}/release/bundle/msi" -name "*.msi" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_${ARCH}.msi"
 
           # NSIS installer
-          find target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*.exe" | head -1 | \
-              xargs -I{} cp {} "dist/tdl_${VER}_windows_arm64-setup.exe"
+          find "target/${TARGET}/release/bundle/nsis" -name "*.exe" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_${ARCH}-setup.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tdl-windows-arm64
+          name: tdl-windows-${{ matrix.arch }}
           path: dist/
           if-no-files-found: error
 
@@ -108,11 +119,12 @@ jobs:
           [[ "$TAG" =~ ^v ]] && TAG="tdl-${TAG}"
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: tdl-windows-arm64
+          pattern: tdl-windows-*
           path: dist/
+          merge-multiple: true
 
       - name: Publish
         env:
