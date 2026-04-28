@@ -772,22 +772,20 @@ function setStatus(msg) { document.getElementById('status-text').textContent = m
 const audio = document.getElementById('player-audio');
 let playerQueue = [];
 let playerIdx = -1;
-let playerGen = 0; // incremented on every playerPlayAt call; guards stale downloads
+let playerGen = 0;  // guards stale playerPlayAt calls
+let dlGen = 0;      // guards the serial download loop; independent of playerGen
 
 async function playerLoadQueue(tracks, startIdx, downloadAll) {
     playerQueue = tracks;
-    const loopGen = ++playerGen;
+    const myDlGen = ++dlGen;      // invalidates any previous download loop
+    const myPlayGen = ++playerGen; // invalidates any previous playerPlayAt
 
     if (!downloadAll) {
-        await playerPlayAt(startIdx, loopGen);
+        await playerPlayAt(startIdx, myPlayGen);
         return;
     }
 
-    // --- downloadAll mode ---
-    // 1. Register all tracks in the UI queue immediately (single DOM render)
-    // 2. Serial download loop: download one at a time, play startIdx as soon as it's ready
-    // 3. loopGen guard: if user triggers a new queue, loop exits cleanly
-
+    // Register all tracks in the UI queue immediately (single DOM render)
     const ordered = [startIdx, ...tracks.map((_, i) => i).filter(i => i !== startIdx)];
     const qidMap = new Map();
     for (const i of ordered) {
@@ -804,26 +802,22 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
 
     let startPlayed = false;
 
+    // Serial download loop — cancelled only when a new playerLoadQueue is called
     (async () => {
         for (const i of ordered) {
-            if (playerGen !== loopGen) {
-                // New queue started — stop this loop but leave queue items visible
-                break;
-            }
+            if (dlGen !== myDlGen) break; // new Play All started
 
             const qid = qidMap.get(i);
-
-            // User cancelled this item — skip it
-            if (!queue.has(qid)) continue;
+            if (!queue.has(qid)) continue; // user cancelled this item
 
             const trackId = tracks[i].id;
             const url = `https://tidal.com/browse/track/${trackId}`;
 
-            // Check local file first — no API call needed if already downloaded
             let localPath = null;
             try { localPath = await invoke('get_track_local_path', { trackId }); } catch(_) {}
 
-            if (!queue.has(qid)) continue; // cancelled while awaiting local path check
+            if (dlGen !== myDlGen) break;
+            if (!queue.has(qid)) continue;
 
             if (localPath) {
                 updateQueue(qid, 'completed');
@@ -837,10 +831,10 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
                 }
             }
 
-            // Play startIdx the moment it's downloaded (first time only)
-            if (i === startIdx && !startPlayed && playerGen === loopGen) {
+            // Trigger playback of startIdx the moment it's ready (first time only)
+            if (i === startIdx && !startPlayed) {
                 startPlayed = true;
-                playerPlayAt(startIdx, loopGen);
+                playerPlayAt(startIdx, myPlayGen);
             }
         }
     })();
@@ -1170,7 +1164,19 @@ async function startDownload() {
     const url = input.value.trim();
     if (!url) return;
     input.value = '';
-    dlUrl(url);
+
+    const albumMatch = url.match(/tidal\.com\/browse\/album\/(\d+)/);
+    const playlistMatch = url.match(/tidal\.com\/browse\/playlist\/([a-zA-Z0-9_-]+)/);
+    const mixMatch = url.match(/tidal\.com\/browse\/mix\/([a-zA-Z0-9_-]+)/);
+    if (albumMatch) {
+        dlAllTracksFromAlbum(albumMatch[1], url);
+    } else if (playlistMatch) {
+        dlAllTracksFromPlaylist(playlistMatch[1], url);
+    } else if (mixMatch) {
+        dlAllTracksFromMix(mixMatch[1], url);
+    } else {
+        dlUrl(url);
+    }
 }
 
 async function dlUrl(url, name) {
@@ -1515,7 +1521,7 @@ function renderSearchAlbums(albums) {
     albums.forEach(a => {
         html += albumCardHtml(a,
             () => browseAlbum(a.id, a.name || ''),
-            () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
+            () => dlAllTracksFromAlbum(a.id, a.name || '')
         );
     });
     html += '</div>';
@@ -1545,7 +1551,7 @@ function renderSearchPlaylists(playlists) {
             const dlBtn = document.getElementById(dlUid);
             if (dlBtn) dlBtn.addEventListener('click', e => {
                 e.stopPropagation();
-                dlUrl(`https://tidal.com/browse/playlist/${id}`, p.name || 'Playlist');
+                dlAllTracksFromPlaylist(id, p.name || 'Playlist');
             });
         }, 0);
     });
@@ -1553,13 +1559,69 @@ function renderSearchPlaylists(playlists) {
 }
 
 // ---- Browse album/playlist ----
+// Serial per-track download — registers each track in the queue individually
+// so the user sees per-track progress instead of a single album blob.
+function dlAllTracks(tracks) {
+    const myDlGen = ++dlGen;
+    (async () => {
+        for (const t2 of tracks) {
+            if (dlGen !== myDlGen) break;
+            const url = `https://tidal.com/browse/track/${t2.id}`;
+            const name = `${artistName(t2)} - ${trackTitle(t2)}`;
+            const qid = addToQueue(url, name, 'queued');
+            if (dlGen !== myDlGen) break;
+            updateQueue(qid, 'downloading');
+            try {
+                await invoke('download_url', { url, queueId: qid });
+                if (queue.has(qid)) updateQueue(qid, 'completed');
+            } catch (e) {
+                if (queue.has(qid)) updateQueue(qid, 'error', String(e));
+            }
+        }
+    })();
+}
+
+async function dlAllTracksFromAlbum(albumId, albumName) {
+    try {
+        const tracks = await invoke('get_album_tracks', { albumId });
+        if (tracks && tracks.length) dlAllTracks(tracks);
+    } catch (e) {
+        showToast(`Failed to load album tracks: ${esc(String(e))}`, 'error');
+    }
+}
+
+async function dlAllTracksFromPlaylist(playlistId, playlistName) {
+    try {
+        const tracks = await invoke('get_playlist_tracks', { playlistId });
+        if (tracks && tracks.length) dlAllTracks(tracks);
+    } catch (e) {
+        showToast(`Failed to load playlist tracks: ${esc(String(e))}`, 'error');
+    }
+}
+
+async function dlAllTracksFromMix(mixId, mixName) {
+    try {
+        const tracks = await invoke('get_mix_items', { mixId });
+        if (tracks && tracks.length) dlAllTracks(tracks);
+    } catch (e) {
+        showToast(`Failed to load mix tracks: ${esc(String(e))}`, 'error');
+    }
+}
+
 function browseHeader(label, targetUrl, dlName, backFn, getTracks) {
     const uid = `bh-${Date.now()}`;
     const playUid = `bh-play-${Date.now()}`;
     const backUid = `bh-back-${Date.now()}`;
     setTimeout(() => {
         const dlBtn = document.getElementById(uid);
-        if (dlBtn) dlBtn.addEventListener('click', () => dlUrl(targetUrl, dlName));
+        if (dlBtn) dlBtn.addEventListener('click', () => {
+            if (getTracks) {
+                const tracks = getTracks();
+                if (tracks && tracks.length) dlAllTracks(tracks);
+            } else {
+                dlUrl(targetUrl, dlName);
+            }
+        });
         const playBtn = document.getElementById(playUid);
         if (playBtn && getTracks) playBtn.addEventListener('click', () => {
             const tracks = getTracks();
@@ -1612,7 +1674,7 @@ async function browseArtist(artistId, name, areaId) {
         albums.forEach(a => {
             grid += albumCardHtml(a,
                 () => browseAlbumInArea(a.id, a.name || '', areaId),
-                () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
+                () => dlAllTracksFromAlbum(a.id, a.name || '')
             );
         });
         grid += '</div>';
@@ -1678,7 +1740,7 @@ function renderFavAlbums(albums) {
     albums.forEach(a => {
         html += albumCardHtml(a,
             () => browseFavAlbum(a.id, a.name || ''),
-            () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
+            () => dlAllTracksFromAlbum(a.id, a.name || '')
         );
     });
     html += '</div>';
@@ -1717,9 +1779,9 @@ function downloadAllFav() {
     const items = favType === 'tracks' ? favTracks : favAlbums;
     if (!items.length) return;
     if (favType === 'tracks') {
-        items.forEach(t => dlUrl(`https://tidal.com/browse/track/${t.id}`, `${artistName(t)} - ${trackTitle(t)}`));
+        dlAllTracks(items);
     } else {
-        items.forEach(a => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name));
+        items.forEach(a => dlAllTracksFromAlbum(a.id, a.name || ''));
     }
 }
 
@@ -1744,7 +1806,7 @@ async function loadPlaylists() {
                     <div class="pl-name">${p.name || 'Untitled'}</div>
                     <div class="pl-count">${p.numTracks || 0} tracks${p.creator ? ' &middot; ' + p.creator.name : ''}</div>
                 </div>
-                <div class="pl-dl"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/playlist/${id}','${(p.name||'Playlist').replace(/'/g,"\\'")}')">DL</button></div>
+                <div class="pl-dl"><button class="dl-btn" onclick="event.stopPropagation();dlAllTracksFromPlaylist('${id}','${(p.name||'Playlist').replace(/'/g,"\\'")}')">DL</button></div>
             </div>`;
         });
         area.innerHTML = html;
