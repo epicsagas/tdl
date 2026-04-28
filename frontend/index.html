@@ -672,7 +672,8 @@ tr.playing td { color:var(--accent) !important; }
         <h3>
             <span data-i18n="panel.queue">Download Queue</span>
             <span id="queue-count" class="badge">0</span>
-            <button id="queue-clear-btn" class="btn btn-sm btn-ghost" onclick="clearQueue()" style="margin-left:auto;display:none" data-i18n="btn.clear">Clear</button>
+            <button id="queue-resume-btn" class="btn btn-sm btn-ghost" onclick="_dlWorker()" style="margin-left:auto;display:none">Resume</button>
+            <button id="queue-clear-btn" class="btn btn-sm btn-ghost" onclick="clearQueue()" style="display:none" data-i18n="btn.clear">Clear</button>
         </h3>
         <div id="queue-list"></div>
     </div>
@@ -775,7 +776,7 @@ const audio = document.getElementById('player-audio');
 let playerQueue = [];
 let playerIdx = -1;
 let playerGen = 0;  // guards stale playerPlayAt calls
-let dlGen = 0;      // guards the serial download loop; independent of playerGen
+let dlGen = 0;      // guards the Play All download loop; independent of playerGen
 let _dlDelayEnabled = true;
 let _dlDelayMin = 3.0;
 let _dlDelayMax = 5.0;
@@ -791,6 +792,38 @@ function dlDelay() {
     if (!_dlDelayEnabled || _dlDelayMax <= _dlDelayMin) return Promise.resolve();
     const ms = (_dlDelayMin + Math.random() * (_dlDelayMax - _dlDelayMin)) * 1000;
     return new Promise(r => setTimeout(r, ms));
+}
+
+// ---- Global download worker ----
+// All dlAllTracks() calls enqueue items and wake the worker.
+// The worker processes queued items one at a time, never stopping mid-queue.
+let _workerRunning = false;
+
+async function _dlWorker() {
+    if (_workerRunning) return;
+    _workerRunning = true;
+    try {
+        while (true) {
+            // Find next queued item in insertion order
+            let nextId = null;
+            for (const [id, item] of queue) {
+                if (item.status === 'queued') { nextId = id; break; }
+            }
+            if (!nextId) break;
+
+            const item = queue.get(nextId);
+            updateQueue(nextId, 'downloading');
+            try {
+                await invoke('download_url', { url: item.url, queueId: nextId });
+                if (queue.has(nextId)) updateQueue(nextId, 'completed');
+            } catch (e) {
+                if (queue.has(nextId)) updateQueue(nextId, 'error', String(e));
+            }
+            await dlDelay();
+        }
+    } finally {
+        _workerRunning = false;
+    }
 }
 
 async function playerLoadQueue(tracks, startIdx, downloadAll) {
@@ -1134,6 +1167,9 @@ function renderQueue() {
     count.textContent = queue.size;
     const hasFinished = [...queue.values()].some(i => i.status !== 'downloading' && i.status !== 'queued');
     if (clearBtn) clearBtn.style.display = hasFinished ? '' : 'none';
+    const hasStuckQueued = !_workerRunning && [...queue.values()].some(i => i.status === 'queued');
+    const resumeBtn = document.getElementById('queue-resume-btn');
+    if (resumeBtn) resumeBtn.style.display = hasStuckQueued ? '' : 'none';
     const parts = [];
     const cancelIds = [];
     for (const [id, item] of queue) {
@@ -1624,28 +1660,16 @@ function renderSearchPlaylists(playlists) {
 }
 
 // ---- Browse album/playlist ----
-// Serial per-track download — registers each track in the queue individually
-// so the user sees per-track progress instead of a single album blob.
+// Enqueue all tracks as 'queued' then wake the global worker.
+// The worker processes items one at a time so multiple album DLs
+// are interleaved correctly in queue order, not by separate loops.
 function dlAllTracks(tracks) {
-    const myDlGen = ++dlGen;
-    (async () => {
-        for (const t2 of tracks) {
-            if (dlGen !== myDlGen) break;
-            const url = `https://tidal.com/browse/track/${t2.id}`;
-            const name = `${artistName(t2)} - ${trackTitle(t2)}`;
-            const qid = addToQueue(url, name, 'queued');
-            if (dlGen !== myDlGen) break;
-            updateQueue(qid, 'downloading');
-            try {
-                await invoke('download_url', { url, queueId: qid });
-                if (queue.has(qid)) updateQueue(qid, 'completed');
-            } catch (e) {
-                if (queue.has(qid)) updateQueue(qid, 'error', String(e));
-            }
-            if (dlGen !== myDlGen) break;
-            await dlDelay();
-        }
-    })();
+    for (const t2 of tracks) {
+        const url = `https://tidal.com/browse/track/${t2.id}`;
+        const name = `${artistName(t2)} - ${trackTitle(t2)}`;
+        addToQueue(url, name, 'queued');
+    }
+    _dlWorker();
 }
 
 async function dlAllTracksFromAlbum(albumId, albumName) {
