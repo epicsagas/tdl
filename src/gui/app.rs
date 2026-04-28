@@ -321,10 +321,19 @@ async fn get_track_local_path(
         .map_err(|e| e.to_string())?;
 
     let artist_name = track.artist_name();
-    let album_artist = track.album.as_ref().map(|a| {
-        let v = a.primary_artist();
-        if v.is_empty() { artist_name.clone() } else { v }
-    }).unwrap_or_else(|| artist_name.clone());
+    // Mirror the same priority as build_media_info in downloader:
+    // track.artists[] MAIN → album.primary_artist() → artist_name
+    let album_artist = track
+        .artists
+        .as_ref()
+        .and_then(|v| v.iter().find(|a| a.role.as_deref() == Some("MAIN")))
+        .map(|a| a.name.clone())
+        .filter(|s| !s.is_empty())
+        .or_else(|| track.album.as_ref().map(|a| {
+            let v = a.primary_artist();
+            if v.is_empty() { artist_name.clone() } else { v }
+        }))
+        .unwrap_or_else(|| artist_name.clone());
 
     let info = crate::pathfmt::format::MediaInfo {
         artist_name: Some(artist_name),

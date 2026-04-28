@@ -697,14 +697,22 @@ impl Downloader {
     fn build_media_info(&self, track: &Track) -> MediaInfo {
         MediaInfo {
             artist_name: Some(track.artist_name()),
-            album_artist: track
-                .album
-                .as_ref()
-                .map(|a| {
+            album_artist: {
+                // Priority: track.artists[] MAIN → album.primary_artist() → track.artist_name()
+                // Using track-level artists avoids the nested album.artist field which
+                // Tidal often populates with all contributors joined (e.g. "A, B, C").
+                let from_track = track
+                    .artists
+                    .as_ref()
+                    .and_then(|v| v.iter().find(|a| a.role.as_deref() == Some("MAIN")))
+                    .map(|a| a.name.clone())
+                    .filter(|s| !s.is_empty());
+                let from_album = track.album.as_ref().map(|a| {
                     let v = a.primary_artist();
                     if v.is_empty() { track.artist_name() } else { v }
-                })
-                .or_else(|| Some(track.artist_name())),
+                });
+                from_track.or(from_album).or_else(|| Some(track.artist_name()))
+            },
             track_title: Some(track.title_display()),
             album_title: track.album.as_ref().map(|a| a.name.clone()),
             album_track_num: track.track_num,
