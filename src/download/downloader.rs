@@ -698,20 +698,14 @@ impl Downloader {
         MediaInfo {
             artist_name: Some(track.artist_name()),
             album_artist: {
-                // Priority: track.artists[] MAIN → album.primary_artist() → track.artist_name()
-                // Using track-level artists avoids the nested album.artist field which
-                // Tidal often populates with all contributors joined (e.g. "A, B, C").
-                let from_track = track
-                    .artists
-                    .as_ref()
-                    .and_then(|v| v.iter().find(|a| a.role.as_deref() == Some("MAIN")))
-                    .map(|a| a.name.clone())
-                    .filter(|s| !s.is_empty());
+                // Folder path must always use the album's primary artist so that all
+                // tracks on the same album land in the same directory regardless of
+                // per-track featuring credits.
                 let from_album = track.album.as_ref().map(|a| {
                     let v = a.primary_artist();
                     if v.is_empty() { track.artist_name() } else { v }
                 });
-                from_track.or(from_album).or_else(|| Some(track.artist_name()))
+                from_album.or_else(|| Some(track.artist_name()))
             },
             track_title: Some(track.title_display()),
             album_title: track.album.as_ref().map(|a| a.name.clone()),
@@ -834,7 +828,20 @@ impl Downloader {
     ) -> Result<Track> {
         let sess = self.session.lock().await;
         match media_type {
-            MediaType::Track => search::get_track(&sess.request, id).await,
+            MediaType::Track => {
+                let mut track = search::get_track(&sess.request, id).await?;
+                // GET /tracks/{id} returns album with no artists[] — only a single
+                // album.artist field that may be comma-joined (e.g. "A, B"). Fetch
+                // the full album to get album.artists[] so primary_artist() works.
+                if let Some(album) = &track.album {
+                    if album.artists.as_ref().map_or(true, |v| v.is_empty()) {
+                        if let Ok(full) = search::get_album(&sess.request, album.id).await {
+                            track.album = Some(full);
+                        }
+                    }
+                }
+                Ok(track)
+            }
             // For videos, try the track endpoint first (Tidal sometimes
             // returns video data there), then fall back to the video endpoint.
             MediaType::Video => {

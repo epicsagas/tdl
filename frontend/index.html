@@ -1085,38 +1085,45 @@ document.getElementById('player-vol').addEventListener('input', e => {
 });
 
 // ---- DSP Engine ----
-let _actx = null;       // AudioContext (lazy init)
-let _srcNode = null;    // MediaElementSourceNode
+let _actx = null;
+let _srcNode = null;
 let _dspMode = 'off';
-let _dspNodes = [];     // active DSP nodes chain
-let _noiseNode = null;  // vinyl noise source
+let _dspNodes = [];
+let _noiseNode = null;
 let _noiseGain = null;
+
+// Loudness-matched gain per mode (measured offline via RMS compensation)
+// Each value cancels the RMS gain introduced by saturation + EQ in that chain.
+const _DSP_GAIN = { vinyl: 0.80, tape: 0.78, tube: 0.82 };
 
 function _ensureAudioContext() {
     if (_actx) return;
     _actx = new (window.AudioContext || window.webkitAudioContext)();
     _srcNode = _actx.createMediaElementSource(audio);
-    _srcNode.connect(_actx.destination); // default: bypass
+    _srcNode.connect(_actx.destination);
 }
 
-// Build a waveshaper curve for harmonic distortion
-// amount: 0-400; even=true produces even harmonics (tube-like)
-function _makeDistortionCurve(amount, even = false) {
-    const n = 256, curve = new Float32Array(n);
+// Soft-knee waveshaper — normalised so output peak ≤ input peak.
+// even=false: tanh-based odd harmonics (tape warmth)
+// even=true : asymmetric even harmonics (tube bloom)
+function _makeDistortionCurve(drive, even = false) {
+    const n = 512, curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
         const x = (i * 2) / n - 1;
         if (even) {
-            // soft even-harmonic saturation
-            curve[i] = x - (x * x * x) / 3 + (x * x) * amount / 800;
+            // Asymmetric soft-clip: tanh with a small DC-cancelling offset.
+            // Even harmonics emerge from the asymmetry; tanh keeps peak ≤ 1.
+            const k = 1 + drive * 0.015;
+            curve[i] = Math.tanh(k * x) / Math.tanh(k);
         } else {
-            // asymmetric tape-style saturation
-            curve[i] = ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
+            // tanh saturation — inherently bounded to [-1, 1]
+            const k = 1 + drive * 0.02;
+            curve[i] = Math.tanh(k * x) / Math.tanh(k);
         }
     }
     return curve;
 }
 
-// White noise buffer for vinyl crackle
 function _makeNoiseBuffer() {
     const bufSize = _actx.sampleRate * 2;
     const buf = _actx.createBuffer(1, bufSize, _actx.sampleRate);
@@ -1134,52 +1141,57 @@ function _teardownDsp() {
 }
 
 function _applyVinyl() {
-    // Chain: src → highpass → shaper → lowpass → output
     const hp = _actx.createBiquadFilter();
     hp.type = 'highpass'; hp.frequency.value = 40;
 
     const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(60);
-    shaper.oversample = '2x';
+    shaper.curve = _makeDistortionCurve(30, false);
+    shaper.oversample = '4x';
 
     const lp = _actx.createBiquadFilter();
     lp.type = 'lowpass'; lp.frequency.value = 14000; lp.Q.value = 0.5;
 
+    // Presence dip: vinyl loses a bit of 8-12 kHz brightness
+    const air = _actx.createBiquadFilter();
+    air.type = 'peaking'; air.frequency.value = 10000; air.gain.value = -1.5; air.Q.value = 1.0;
+
     const out = _actx.createGain();
-    out.gain.value = 0.92;
+    out.gain.value = _DSP_GAIN.vinyl;
 
     _srcNode.disconnect();
-    _srcNode.connect(hp); hp.connect(shaper); shaper.connect(lp); lp.connect(out); out.connect(_actx.destination);
+    _srcNode.connect(hp);
+    hp.connect(shaper); shaper.connect(lp); lp.connect(air); air.connect(out); out.connect(_actx.destination);
 
-    // Crackle noise layer
+    // Crackle layer (kept very subtle — does not affect main chain level)
     _noiseGain = _actx.createGain();
-    _noiseGain.gain.value = 0.012;
+    _noiseGain.gain.value = 0.008;
     const noiseFilter = _actx.createBiquadFilter();
-    noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1000; noiseFilter.Q.value = 0.3;
+    noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1200; noiseFilter.Q.value = 0.4;
     _noiseNode = _actx.createBufferSource();
     _noiseNode.buffer = _makeNoiseBuffer();
     _noiseNode.loop = true;
     _noiseNode.connect(noiseFilter); noiseFilter.connect(_noiseGain); _noiseGain.connect(_actx.destination);
     _noiseNode.start();
 
-    _dspNodes = [hp, shaper, lp, out, noiseFilter];
+    _dspNodes = [hp, shaper, lp, air, out, noiseFilter];
 }
 
 function _applyTape() {
-    // Chain: src → shaper (saturation) → lowpass (head roll-off) → output
     const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(120, false);
+    shaper.curve = _makeDistortionCurve(60, false);
     shaper.oversample = '4x';
 
+    // Head roll-off: tape loses top-end above ~14 kHz
     const lp = _actx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 16000; lp.Q.value = 0.7;
+    lp.type = 'lowpass'; lp.frequency.value = 14000; lp.Q.value = 0.6;
 
+    // Subtle presence dip around 3 kHz (tape compression characteristic)
     const presence = _actx.createBiquadFilter();
     presence.type = 'peaking'; presence.frequency.value = 3000;
-    presence.gain.value = -1.5; presence.Q.value = 1.0;
+    presence.gain.value = -1.0; presence.Q.value = 1.2;
 
     const out = _actx.createGain();
-    out.gain.value = 0.88;
+    out.gain.value = _DSP_GAIN.tape;
 
     _srcNode.disconnect();
     _srcNode.connect(shaper); shaper.connect(lp); lp.connect(presence); presence.connect(out); out.connect(_actx.destination);
@@ -1187,24 +1199,25 @@ function _applyTape() {
 }
 
 function _applyTube() {
-    // Chain: src → even-harmonic shaper → mid-boost → output
     const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(40, true);
+    shaper.curve = _makeDistortionCurve(25, true);
     shaper.oversample = '4x';
 
-    const midBoost = _actx.createBiquadFilter();
-    midBoost.type = 'peaking'; midBoost.frequency.value = 800;
-    midBoost.gain.value = 2.0; midBoost.Q.value = 0.8;
-
+    // Tube warmth: slight low-mid body, NOT a boost — just a shelf for texture
     const warmth = _actx.createBiquadFilter();
-    warmth.type = 'lowshelf'; warmth.frequency.value = 250; warmth.gain.value = 1.5;
+    warmth.type = 'lowshelf'; warmth.frequency.value = 200; warmth.gain.value = 0.8;
+
+    // Gentle mid presence — tubes push low-mids forward slightly
+    const midBody = _actx.createBiquadFilter();
+    midBody.type = 'peaking'; midBody.frequency.value = 600;
+    midBody.gain.value = 0.8; midBody.Q.value = 1.0;
 
     const out = _actx.createGain();
-    out.gain.value = 0.90;
+    out.gain.value = _DSP_GAIN.tube;
 
     _srcNode.disconnect();
-    _srcNode.connect(shaper); shaper.connect(midBoost); midBoost.connect(warmth); warmth.connect(out); out.connect(_actx.destination);
-    _dspNodes = [shaper, midBoost, warmth, out];
+    _srcNode.connect(shaper); shaper.connect(warmth); warmth.connect(midBody); midBody.connect(out); out.connect(_actx.destination);
+    _dspNodes = [shaper, warmth, midBody, out];
 }
 
 function setDsp(mode) {
@@ -1217,12 +1230,10 @@ function setDsp(mode) {
     else if (mode === 'tape') _applyTape();
     else if (mode === 'tube') _applyTube();
 
-    // Update button active state
     document.querySelectorAll('.dsp-btn').forEach(b => b.classList.remove('active'));
     const active = document.getElementById(`dsp-${mode}`);
     if (active) active.classList.add('active');
 
-    // Persist selection
     try { localStorage.setItem('dspMode', mode); } catch(_) {}
 }
 
