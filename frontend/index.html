@@ -211,7 +211,7 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 #player-vol { width:70px; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px; background:var(--bg3); cursor:pointer; }
 #player-vol::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--text2); cursor:pointer; }
 #player-dsp-wrap { display:flex; align-items:center; gap:2px; flex-shrink:0; margin-left:8px; border-left:1px solid var(--border); padding-left:10px; }
-.dsp-btn { font-size:11px !important; padding:3px 7px !important; border-radius:10px !important; color:var(--text2) !important; }
+.dsp-btn { padding:4px 5px !important; border-radius:6px !important; color:var(--text2) !important; line-height:0; }
 .dsp-btn.active { background:var(--bg3) !important; color:var(--accent) !important; box-shadow:0 0 0 1px var(--accent); }
 .track-row-play { cursor:pointer; }
 .track-row-play:hover td { background:var(--bg3) !important; }
@@ -706,10 +706,42 @@ tr.playing td { color:var(--accent) !important; }
         <input type="range" id="player-vol" min="0" max="1" step="0.02" value="0.8">
     </div>
     <div id="player-dsp-wrap">
-        <button class="p-btn dsp-btn" id="dsp-off"    onclick="setDsp('off')"   title="No effect">Off</button>
-        <button class="p-btn dsp-btn" id="dsp-vinyl"  onclick="setDsp('vinyl')" title="Vinyl">&#9900;</button>
-        <button class="p-btn dsp-btn" id="dsp-tape"   onclick="setDsp('tape')"  title="Tape">&#9646;</button>
-        <button class="p-btn dsp-btn" id="dsp-tube"   onclick="setDsp('tube')"  title="Tube">&#9651;</button>
+        <!-- Off: sine wave with a diagonal slash -->
+        <button class="p-btn dsp-btn" id="dsp-off" onclick="setDsp('off')" title="No effect">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                <path d="M2 9 Q4 5 6 9 Q8 13 10 9 Q12 5 14 9 Q15.5 12 16 9"/>
+                <line x1="3" y1="15" x2="15" y2="3"/>
+            </svg>
+        </button>
+        <!-- Vinyl: LP record — outer ring + label circle + centre hole + grooves -->
+        <button class="p-btn dsp-btn" id="dsp-vinyl" onclick="setDsp('vinyl')" title="Vinyl">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                <circle cx="9" cy="9" r="7.5"/>
+                <circle cx="9" cy="9" r="3.2"/>
+                <circle cx="9" cy="9" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="9" cy="9" r="5.5" stroke-dasharray="1.2 2.0" stroke-width="0.9"/>
+            </svg>
+        </button>
+        <!-- Tape: two reels connected by a tape path -->
+        <button class="p-btn dsp-btn" id="dsp-tape" onclick="setDsp('tape')" title="Tape">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                <circle cx="5.5" cy="8" r="3"/>
+                <circle cx="5.5" cy="8" r="1" fill="currentColor" stroke="none"/>
+                <circle cx="12.5" cy="8" r="3"/>
+                <circle cx="12.5" cy="8" r="1" fill="currentColor" stroke="none"/>
+                <path d="M5.5 11 Q9 14 12.5 11"/>
+            </svg>
+        </button>
+        <!-- Tube: vacuum tube — envelope + grid lines + cathode base -->
+        <button class="p-btn dsp-btn" id="dsp-tube" onclick="setDsp('tube')" title="Tube">
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+                <path d="M5 14 L5 6 Q5 2 9 2 Q13 2 13 6 L13 14 Z"/>
+                <line x1="7" y1="7" x2="11" y2="7"/>
+                <line x1="7" y1="9.5" x2="11" y2="9.5"/>
+                <line x1="9" y1="14" x2="9" y2="16"/>
+                <line x1="7" y1="16" x2="11" y2="16"/>
+            </svg>
+        </button>
     </div>
 </div>
 <audio id="player-audio"></audio>
@@ -1089,12 +1121,6 @@ let _actx = null;
 let _srcNode = null;
 let _dspMode = 'off';
 let _dspNodes = [];
-let _noiseNode = null;
-let _noiseGain = null;
-
-// Loudness-matched gain per mode (measured offline via RMS compensation)
-// Each value cancels the RMS gain introduced by saturation + EQ in that chain.
-const _DSP_GAIN = { vinyl: 0.80, tape: 0.78, tube: 0.82 };
 
 function _ensureAudioContext() {
     if (_actx) return;
@@ -1103,20 +1129,21 @@ function _ensureAudioContext() {
     _srcNode.connect(_actx.destination);
 }
 
-// Soft-knee waveshaper — normalised so output peak ≤ input peak.
-// even=false: tanh-based odd harmonics (tape warmth)
-// even=true : asymmetric even harmonics (tube bloom)
+// Soft-knee waveshaper.
+// even=false: symmetric tanh (odd harmonics — tape/vinyl tracing texture)
+// even=true : asymmetric tanh (even harmonics — tube bloom)
 function _makeDistortionCurve(drive, even = false) {
     const n = 512, curve = new Float32Array(n);
     for (let i = 0; i < n; i++) {
         const x = (i * 2) / n - 1;
         if (even) {
-            // Asymmetric soft-clip: tanh with a small DC-cancelling offset.
-            // Even harmonics emerge from the asymmetry; tanh keeps peak ≤ 1.
-            const k = 1 + drive * 0.015;
-            curve[i] = Math.tanh(k * x) / Math.tanh(k);
+            // Asymmetric clip: positive half clips harder → 2nd harmonic generation.
+            const kPos = 1 + drive * 0.025;
+            const kNeg = 1 + drive * 0.010;
+            curve[i] = x >= 0
+                ? Math.tanh(kPos * x) / Math.tanh(kPos)
+                : Math.tanh(kNeg * x) / Math.tanh(kNeg);
         } else {
-            // tanh saturation — inherently bounded to [-1, 1]
             const k = 1 + drive * 0.02;
             curve[i] = Math.tanh(k * x) / Math.tanh(k);
         }
@@ -1124,111 +1151,159 @@ function _makeDistortionCurve(drive, even = false) {
     return curve;
 }
 
-function _makeNoiseBuffer() {
-    const bufSize = _actx.sampleRate * 2;
-    const buf = _actx.createBuffer(1, bufSize, _actx.sampleRate);
-    const data = buf.getChannelData(0);
-    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
-    return buf;
+// Measure RMS of a chain builder's output using OfflineAudioContext and
+// pink noise as stimulus, then return the gain scalar needed to match
+// the input RMS. Resolves to a number in (0, ~2].
+async function _measureCompensationGain(chainBuilder) {
+    const sr = 44100, dur = 1.0;
+    const frames = sr * dur;
+    const offline = new OfflineAudioContext(1, frames, sr);
+
+    // Pink noise via white noise + 3dB/oct IIR approximation (Paul Kellet filter)
+    const buf = offline.createBuffer(1, frames, sr);
+    const d = buf.getChannelData(0);
+    let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+    for (let i = 0; i < frames; i++) {
+        const w = Math.random() * 2 - 1;
+        b0=0.99886*b0+w*0.0555179; b1=0.99332*b1+w*0.0750759;
+        b2=0.96900*b2+w*0.1538520; b3=0.86650*b3+w*0.3104856;
+        b4=0.55000*b4+w*0.5329522; b5=-0.7616*b5-w*0.0168980;
+        d[i] = (b0+b1+b2+b3+b4+b5+b6+w*0.5362) * 0.11;
+        b6 = w * 0.115926;
+    }
+
+    const src = offline.createBufferSource();
+    src.buffer = buf;
+
+    // Measure input RMS via ScriptProcessor equivalent: just compute from buffer
+    let inRms = 0;
+    for (let i = 0; i < frames; i++) inRms += d[i] * d[i];
+    inRms = Math.sqrt(inRms / frames);
+
+    // Build the chain in the offline context (chainBuilder receives the context)
+    const outNode = chainBuilder(offline, src);
+    outNode.connect(offline.destination);
+    src.start();
+
+    const rendered = await offline.startRendering();
+    const out = rendered.getChannelData(0);
+    let outRms = 0;
+    for (let i = 0; i < frames; i++) outRms += out[i] * out[i];
+    outRms = Math.sqrt(outRms / frames);
+
+    return outRms > 0 ? Math.min(inRms / outRms, 2.0) : 1.0;
 }
 
+
 function _teardownDsp() {
-    if (_noiseNode) { try { _noiseNode.stop(); } catch(_) {} _noiseNode = null; }
-    if (_noiseGain) { _noiseGain.disconnect(); _noiseGain = null; }
     _dspNodes.forEach(n => { try { n.disconnect(); } catch(_) {} });
     _dspNodes = [];
     if (_srcNode) { _srcNode.disconnect(); _srcNode.connect(_actx.destination); }
 }
 
-function _applyVinyl() {
-    const hp = _actx.createBiquadFilter();
-    hp.type = 'highpass'; hp.frequency.value = 40;
+// Each _build* function constructs the DSP chain inside a given AudioContext
+// (real or offline) and returns the final node before the destination.
+// The out GainNode is created but its gain is set by the caller after RMS measurement.
 
-    const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(30, false);
+function _buildVinylChain(ctx, input) {
+    const tonearm = ctx.createBiquadFilter();
+    tonearm.type = 'highpass'; tonearm.frequency.value = 22; tonearm.Q.value = 0.8;
+
+    const body = ctx.createBiquadFilter();
+    body.type = 'peaking'; body.frequency.value = 250; body.gain.value = 1.8; body.Q.value = 0.9;
+
+    const riaa = ctx.createBiquadFilter();
+    riaa.type = 'highshelf'; riaa.frequency.value = 3200; riaa.gain.value = -2.5;
+
+    const cartridge = ctx.createBiquadFilter();
+    cartridge.type = 'lowpass'; cartridge.frequency.value = 15000; cartridge.Q.value = 0.6;
+
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(18, false);
     shaper.oversample = '4x';
 
-    const lp = _actx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 14000; lp.Q.value = 0.5;
-
-    // Presence dip: vinyl loses a bit of 8-12 kHz brightness
-    const air = _actx.createBiquadFilter();
-    air.type = 'peaking'; air.frequency.value = 10000; air.gain.value = -1.5; air.Q.value = 1.0;
-
-    const out = _actx.createGain();
-    out.gain.value = _DSP_GAIN.vinyl;
-
-    _srcNode.disconnect();
-    _srcNode.connect(hp);
-    hp.connect(shaper); shaper.connect(lp); lp.connect(air); air.connect(out); out.connect(_actx.destination);
-
-    // Crackle layer (kept very subtle — does not affect main chain level)
-    _noiseGain = _actx.createGain();
-    _noiseGain.gain.value = 0.008;
-    const noiseFilter = _actx.createBiquadFilter();
-    noiseFilter.type = 'bandpass'; noiseFilter.frequency.value = 1200; noiseFilter.Q.value = 0.4;
-    _noiseNode = _actx.createBufferSource();
-    _noiseNode.buffer = _makeNoiseBuffer();
-    _noiseNode.loop = true;
-    _noiseNode.connect(noiseFilter); noiseFilter.connect(_noiseGain); _noiseGain.connect(_actx.destination);
-    _noiseNode.start();
-
-    _dspNodes = [hp, shaper, lp, air, out, noiseFilter];
+    input.connect(tonearm);
+    tonearm.connect(body); body.connect(riaa); riaa.connect(cartridge); cartridge.connect(shaper);
+    return { last: shaper, nodes: [tonearm, body, riaa, cartridge, shaper] };
 }
 
-function _applyTape() {
-    const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(60, false);
+function _buildTapeChain(ctx, input) {
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(45, false);
     shaper.oversample = '4x';
 
-    // Head roll-off: tape loses top-end above ~14 kHz
-    const lp = _actx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 14000; lp.Q.value = 0.6;
+    const lowBody = ctx.createBiquadFilter();
+    lowBody.type = 'peaking'; lowBody.frequency.value = 100; lowBody.gain.value = 1.2; lowBody.Q.value = 0.7;
 
-    // Subtle presence dip around 3 kHz (tape compression characteristic)
-    const presence = _actx.createBiquadFilter();
-    presence.type = 'peaking'; presence.frequency.value = 3000;
-    presence.gain.value = -1.0; presence.Q.value = 1.2;
+    const presence = ctx.createBiquadFilter();
+    presence.type = 'peaking'; presence.frequency.value = 2500; presence.gain.value = 1.0; presence.Q.value = 1.0;
 
-    const out = _actx.createGain();
-    out.gain.value = _DSP_GAIN.tape;
+    const headRolloff = ctx.createBiquadFilter();
+    headRolloff.type = 'lowshelf'; headRolloff.frequency.value = 12000; headRolloff.gain.value = -1.5;
 
-    _srcNode.disconnect();
-    _srcNode.connect(shaper); shaper.connect(lp); lp.connect(presence); presence.connect(out); out.connect(_actx.destination);
-    _dspNodes = [shaper, lp, presence, out];
+    input.connect(shaper);
+    shaper.connect(lowBody); lowBody.connect(presence); presence.connect(headRolloff);
+    return { last: headRolloff, nodes: [shaper, lowBody, presence, headRolloff] };
 }
 
-function _applyTube() {
-    const shaper = _actx.createWaveShaper();
-    shaper.curve = _makeDistortionCurve(25, true);
+function _buildTubeChain(ctx, input) {
+    // Asymmetric tanh: positive half clips harder than negative → 2nd harmonic
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = _makeDistortionCurve(30, true);
     shaper.oversample = '4x';
 
-    // Tube warmth: slight low-mid body, NOT a boost — just a shelf for texture
-    const warmth = _actx.createBiquadFilter();
-    warmth.type = 'lowshelf'; warmth.frequency.value = 200; warmth.gain.value = 0.8;
+    // Transformer-coupled low-end: tubes run through output transformers that
+    // add low-mid density around 150-300 Hz.
+    const transformer = ctx.createBiquadFilter();
+    transformer.type = 'peaking'; transformer.frequency.value = 200; transformer.gain.value = 1.5; transformer.Q.value = 0.8;
 
-    // Gentle mid presence — tubes push low-mids forward slightly
-    const midBody = _actx.createBiquadFilter();
-    midBody.type = 'peaking'; midBody.frequency.value = 600;
-    midBody.gain.value = 0.8; midBody.Q.value = 1.0;
+    // Triode plate characteristic: gentle high-frequency roll-off above ~8 kHz,
+    // not because tubes are dull but because inter-electrode capacitance limits HF.
+    const plateRolloff = ctx.createBiquadFilter();
+    plateRolloff.type = 'highshelf'; plateRolloff.frequency.value = 8000; plateRolloff.gain.value = -1.8;
 
-    const out = _actx.createGain();
-    out.gain.value = _DSP_GAIN.tube;
-
-    _srcNode.disconnect();
-    _srcNode.connect(shaper); shaper.connect(warmth); warmth.connect(midBody); midBody.connect(out); out.connect(_actx.destination);
-    _dspNodes = [shaper, warmth, midBody, out];
+    input.connect(shaper);
+    shaper.connect(transformer); transformer.connect(plateRolloff);
+    return { last: plateRolloff, nodes: [shaper, transformer, plateRolloff] };
 }
 
-function setDsp(mode) {
+async function _applyDspChain(builder) {
+    // Step 1: measure RMS gain introduced by this chain using OfflineAudioContext.
+    // A dummy source node is passed so the builder can wire itself identically.
+    const compGain = await _measureCompensationGain((offCtx, offSrc) => {
+        const { last } = builder(offCtx, offSrc);
+        return last;
+    });
+
+    // Step 2: build the real-time chain. _teardownDsp() already called by setDsp()
+    // so _srcNode is disconnected. Re-wire: src → chain → gainComp → destination.
+    const dummy = _actx.createGain(); // acts as the "input" node for builder
+    dummy.gain.value = 1;
+    _srcNode.connect(dummy);
+
+    const { last, nodes } = builder(_actx, dummy);
+
+    const out = _actx.createGain();
+    out.gain.value = compGain;
+    last.connect(out); out.connect(_actx.destination);
+
+    _dspNodes = [dummy, ...nodes, out];
+}
+
+// Thin wrappers so setDsp() stays clean
+async function _applyVinyl() { await _applyDspChain(_buildVinylChain); }
+async function _applyTape()  { await _applyDspChain(_buildTapeChain);  }
+async function _applyTube()  { await _applyDspChain(_buildTubeChain);  }
+
+async function setDsp(mode) {
     _ensureAudioContext();
     if (_actx.state === 'suspended') _actx.resume();
     _teardownDsp();
     _dspMode = mode;
 
-    if (mode === 'vinyl') _applyVinyl();
-    else if (mode === 'tape') _applyTape();
-    else if (mode === 'tube') _applyTube();
+    if (mode === 'vinyl') await _applyVinyl();
+    else if (mode === 'tape') await _applyTape();
+    else if (mode === 'tube') await _applyTube();
 
     document.querySelectorAll('.dsp-btn').forEach(b => b.classList.remove('active'));
     const active = document.getElementById(`dsp-${mode}`);
