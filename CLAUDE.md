@@ -2,29 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
-
-```bash
-# Build (GUI is the default feature)
-cargo build
-cargo build --release
-
-# Run
-cargo run -- [URL]          # download a URL
-cargo run -- tui            # launch TUI
-cargo run -- gui            # launch GUI (same as default)
-cargo run --features gui    # explicit GUI feature
-
-# Test
-cargo test --lib            # all 78 library tests
-cargo test --lib tidal      # specific module
-cargo test -- --nocapture   # show stdout from tests
-
-# Check without linking
-cargo check --features gui
-```
-
-All data (settings, token) lives in `~/.tdl/`. Config path is determined by `Settings::config_dir()` → `dirs::home_dir().join(".tdl")`.
+For commands, code style, testing, git workflow, and boundaries — see **AGENTS.md**.
 
 ## Architecture
 
