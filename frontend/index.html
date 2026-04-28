@@ -873,10 +873,15 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
 
     let startPlayed = false;
 
-    // Serial download loop — cancelled only when a new playerLoadQueue is called
+    // Serial download loop — cancelled only when a new playerLoadQueue is called.
+    // On cancellation, remaining queued items are handed off to the global worker.
     (async () => {
         for (const i of ordered) {
-            if (dlGen !== myDlGen) break; // new Play All started
+            if (dlGen !== myDlGen) {
+                // New Play All started — hand off remaining queued items to worker
+                _dlWorker();
+                break;
+            }
 
             const qid = qidMap.get(i);
             if (!queue.has(qid)) continue; // user cancelled this item
@@ -887,7 +892,7 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
             let localPath = null;
             try { localPath = await invoke('get_track_local_path', { trackId }); } catch(_) {}
 
-            if (dlGen !== myDlGen) break;
+            if (dlGen !== myDlGen) { _dlWorker(); break; }
             if (!queue.has(qid)) continue;
 
             if (localPath) {
@@ -900,7 +905,7 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
                 } catch (e) {
                     if (queue.has(qid)) updateQueue(qid, 'error', String(e));
                 }
-                if (dlGen !== myDlGen) break;
+                if (dlGen !== myDlGen) { _dlWorker(); break; }
                 await dlDelay();
             }
 
