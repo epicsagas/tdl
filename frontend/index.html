@@ -799,6 +799,26 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
     const myPlayGen = ++playerGen; // invalidates any previous playerPlayAt
 
     if (!downloadAll) {
+        // Count tracks not yet downloaded to ask user whether to download all
+        const missing = [];
+        for (let i = 0; i < tracks.length; i++) {
+            if (i === startIdx) continue;
+            let p = null;
+            try { p = await invoke('get_track_local_path', { trackId: tracks[i].id }); } catch(_) {}
+            if (!p) missing.push(i);
+        }
+        if (missing.length > 0) {
+            const dlAll = await showConfirm(
+                t('confirm.missingTitle').replace('{n}', missing.length),
+                t('confirm.missingMsg'),
+                t('confirm.download'),
+                t('confirm.thisTrackOnly')
+            );
+            if (dlAll) {
+                playerLoadQueue(tracks, startIdx, true);
+                return;
+            }
+        }
         await playerPlayAt(startIdx, myPlayGen);
         return;
     }
