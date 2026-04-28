@@ -630,6 +630,7 @@ tr.playing td { color:var(--accent) !important; }
                 <button class="filter-btn active" data-fav="tracks" onclick="loadFav('tracks')" data-i18n="filter.tracks">Tracks</button>
                 <button class="filter-btn" data-fav="albums" onclick="loadFav('albums')" data-i18n="filter.albums">Albums</button>
             </div>
+            <button id="fav-play-all-btn" class="btn btn-sm btn-ghost" onclick="playAllFav()">&#9654; Play All</button>
             <button class="btn btn-sm" onclick="downloadAllFav()" data-i18n="common.dlAll">Download All</button>
         </div>
         <div class="page-body" id="fav-results"></div>
@@ -773,43 +774,79 @@ let playerQueue = [];
 let playerIdx = -1;
 let playerGen = 0; // incremented on every playerPlayAt call; guards stale downloads
 
-async function playerLoadQueue(tracks, startIdx) {
-    // Check which tracks are missing and ask user once before starting
-    const missing = [];
-    for (let i = 0; i < tracks.length; i++) {
-        if (i === startIdx) continue; // check later inline
-        let p = null;
-        try { p = await invoke('get_track_local_path', { trackId: tracks[i].id }); } catch(_) {}
-        if (!p) missing.push(i);
-    }
-
+async function playerLoadQueue(tracks, startIdx, downloadAll) {
     playerQueue = tracks;
-
-    if (missing.length > 0) {
-        const dlAll = await showConfirm(
-            t('confirm.missingTitle').replace('{n}', missing.length),
-            t('confirm.missingMsg'),
-            t('confirm.download'), t('confirm.thisTrackOnly')
-        );
-        if (dlAll) {
-            // kick off background downloads for missing tracks (don't await)
-            missing.forEach(i => {
-                const t2 = tracks[i];
-                const url = `https://tidal.com/browse/track/${t2.id}`;
-                const name = `${artistName(t2)} - ${trackTitle(t2)}`;
-                const qid = addToQueue(url, name);
-                invoke('download_url', { url, queueId: qid }).catch(() => {});
+    const loopGen = ++playerGen; // bump once; playerPlayAt will NOT bump again below
+    if (downloadAll) {
+        // Register ALL tracks in the UI queue at once (single DOM render).
+        // Order: startIdx first so it appears at the top, rest follow in track order.
+        const ordered = [startIdx, ...tracks.map((_, i) => i).filter(i => i !== startIdx)];
+        const qidMap = new Map(); // trackIndex → qid
+        for (const i of ordered) {
+            const t2 = tracks[i];
+            const id = Date.now().toString() + Math.random().toString(36).slice(2);
+            const isStart = i === startIdx;
+            queue.set(id, {
+                url: `https://tidal.com/browse/track/${t2.id}`,
+                name: `${artistName(t2)} - ${trackTitle(t2)}`,
+                status: isStart ? 'downloading' : 'queued',
+                progress: '', tracks: null, activeTrack: -1,
             });
+            qidMap.set(i, id);
         }
-    }
+        renderQueue(); // single render for the whole batch
 
-    await playerPlayAt(startIdx);
+        // Kick off playback of startIdx immediately (fire-and-forget).
+        // playerPlayAt will download if needed and start audio as soon as ready.
+        playerPlayAt(startIdx, loopGen).then(() => {
+            updateQueue(qidMap.get(startIdx), 'completed');
+        });
+
+        // Serial download chain for remaining tracks — one at a time with Rust's
+        // random delay between each so we don't hammer the API.
+        (async () => {
+            for (const i of ordered.slice(1)) {
+                if (playerGen !== loopGen) {
+                    // User switched queue — clean up remaining queued items
+                    for (const j of ordered.slice(ordered.indexOf(i))) {
+                        queue.delete(qidMap.get(j));
+                    }
+                    break;
+                }
+                const qid = qidMap.get(i);
+                const trackId = tracks[i].id;
+                const url = `https://tidal.com/browse/track/${trackId}`;
+
+                // Skip API entirely if file already exists locally
+                let localPath = null;
+                try { localPath = await invoke('get_track_local_path', { trackId }); } catch(_) {}
+                if (localPath) {
+                    updateQueue(qid, 'completed');
+                    continue;
+                }
+
+                updateQueue(qid, 'downloading');
+                try {
+                    await invoke('download_url', { url, queueId: qid });
+                    updateQueue(qid, 'completed');
+                } catch (e) {
+                    updateQueue(qid, 'error', String(e));
+                }
+            }
+            renderQueue();
+        })();
+        return;
+    }
+    // Non-downloadAll: just play (gen already bumped above)
+    await playerPlayAt(startIdx, loopGen);
 }
 
-async function playerPlayAt(idx) {
+async function playerPlayAt(idx, existingGen) {
     if (idx < 0 || idx >= playerQueue.length) return;
     playerIdx = idx;
-    const gen = ++playerGen; // capture this request's generation
+    // If called from playerLoadQueue, gen was already bumped there — reuse it.
+    // Otherwise bump here (direct row-click / next-track navigation).
+    const gen = existingGen !== undefined ? existingGen : ++playerGen;
     const t = playerQueue[idx];
     const trackId = t.id;
 
@@ -889,6 +926,9 @@ function showConfirm(title, message, confirmLabel, cancelLabel) {
 }
 
 function playerSetSrc(src, t) {
+    // Stop current playback before switching source so the 'ended' event
+    // doesn't fire and trigger playerNext() while we're loading the new track.
+    audio.pause();
     audio.src = src;
     audio.load();
     audio.volume = document.getElementById('player-vol').value;
@@ -1015,9 +1055,9 @@ function setTrackInfo(t) {
 }
 
 // ---- Queue ----
-function addToQueue(url, name) {
+function addToQueue(url, name, initialStatus = 'downloading') {
     const id = Date.now().toString();
-    queue.set(id, { url, name, status: 'downloading', progress: '', tracks: null, activeTrack: -1 });
+    queue.set(id, { url, name, status: initialStatus, progress: '', tracks: null, activeTrack: -1 });
     renderQueue();
     return id;
 }
@@ -1049,17 +1089,19 @@ function renderQueue() {
     const count = document.getElementById('queue-count');
     const clearBtn = document.getElementById('queue-clear-btn');
     count.textContent = queue.size;
-    const hasFinished = [...queue.values()].some(i => i.status !== 'downloading');
+    const hasFinished = [...queue.values()].some(i => i.status !== 'downloading' && i.status !== 'queued');
     if (clearBtn) clearBtn.style.display = hasFinished ? '' : 'none';
     const parts = [];
     const cancelIds = [];
     for (const [id, item] of queue) {
-        const done = item.status !== 'downloading';
+        const active = item.status === 'downloading' || item.status === 'queued';
+        const done = !active;
         const cancelUid = `qc-${id}`;
-        const cancelBtn = !done ? `<button class="q-cancel" id="${cancelUid}" title="Cancel">&#10005;</button>` : '';
-        if (!done) cancelIds.push({ uid: cancelUid, id });
+        const cancelBtn = active ? `<button class="q-cancel" id="${cancelUid}" title="Cancel">&#10005;</button>` : '';
+        if (active) cancelIds.push({ uid: cancelUid, id });
         const statusText = item.status === 'downloading'
             ? (item.progress || t('queue.downloading'))
+            : item.status === 'queued' ? t('queue.queued') || 'Queued'
             : item.status;
 
         let tracksHtml = '';
@@ -1500,18 +1542,26 @@ function renderSearchPlaylists(playlists) {
 }
 
 // ---- Browse album/playlist ----
-function browseHeader(label, targetUrl, dlName, backFn) {
+function browseHeader(label, targetUrl, dlName, backFn, getTracks) {
     const uid = `bh-${Date.now()}`;
+    const playUid = `bh-play-${Date.now()}`;
     const backUid = `bh-back-${Date.now()}`;
     setTimeout(() => {
         const dlBtn = document.getElementById(uid);
         if (dlBtn) dlBtn.addEventListener('click', () => dlUrl(targetUrl, dlName));
+        const playBtn = document.getElementById(playUid);
+        if (playBtn && getTracks) playBtn.addEventListener('click', () => {
+            const tracks = getTracks();
+            if (tracks && tracks.length) playerLoadQueue(tracks, 0, true);
+        });
         const backBtn = document.getElementById(backUid);
         if (backBtn && backFn) backBtn.addEventListener('click', new Function(backFn));
     }, 0);
+    const playBtnHtml = getTracks ? `<button class="btn btn-sm btn-ghost" id="${playUid}">&#9654; Play All</button>` : '';
     return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0">
         ${backFn ? `<button class="btn btn-sm" id="${backUid}">&larr;</button>` : ''}
         <strong style="flex:1;font-size:13px">${esc(label)}</strong>
+        ${playBtnHtml}
         <button class="btn btn-sm" id="${uid}">Download All</button>
     </div>`;
 }
@@ -1526,7 +1576,7 @@ async function browseAlbumInArea(albumId, name, areaId) {
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     try {
         const tracks = await invoke('get_album_tracks', { albumId });
-        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, backFn);
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, backFn, () => tracks);
         renderTrackTable(tracks, areaId, { emptyMsg: 'No tracks' });
     } catch (e) {
         const msg = String(e);
@@ -1573,7 +1623,7 @@ async function browsePlaylist(plId, name) {
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     try {
         const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
-        area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'renderSearchResults()');
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'renderSearchResults()', () => tracks);
         renderTrackTable(tracks, 'search-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
@@ -1588,6 +1638,8 @@ async function loadFav(type) {
     });
     const dlAllBtn = document.querySelector('#page-favorites .btn-sm[onclick="downloadAllFav()"]');
     if (dlAllBtn) dlAllBtn.style.display = '';
+    const playAllBtn = document.getElementById('fav-play-all-btn');
+    if (playAllBtn) playAllBtn.style.display = type === 'tracks' ? '' : 'none';
     const area = document.getElementById('fav-results');
     area.innerHTML = '<div class="loading">Loading...</div>';
     try {
@@ -1625,11 +1677,13 @@ function renderFavAlbums(albums) {
 async function browseFavAlbum(albumId, name) {
     const area = document.getElementById('fav-results');
     const dlAllBtn = document.querySelector('#page-favorites .btn-sm[onclick="downloadAllFav()"]');
+    const playAllBtn = document.getElementById('fav-play-all-btn');
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
     if (dlAllBtn) dlAllBtn.style.display = 'none';
+    if (playAllBtn) playAllBtn.style.display = 'none';
     try {
         const tracks = await invoke('get_album_tracks', { albumId });
-        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'albums\')');
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'albums\')', () => tracks);
         renderTrackTable(tracks, 'fav-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         const msg = String(e);
@@ -1638,9 +1692,11 @@ async function browseFavAlbum(albumId, name) {
             favAlbums = favAlbums.filter(a => a.id !== albumId);
             renderFavAlbums(favAlbums);
             if (dlAllBtn) dlAllBtn.style.display = '';
+            if (playAllBtn) playAllBtn.style.display = '';
             showToast(t('toast.albumRemoved').replace('{name}', name), 'warn');
         } else {
             if (dlAllBtn) dlAllBtn.style.display = '';
+            if (playAllBtn) playAllBtn.style.display = '';
             area.innerHTML = `<div class="empty error-msg">Failed: ${esc(msg)}</div>`;
         }
     }
@@ -1654,6 +1710,11 @@ function downloadAllFav() {
     } else {
         items.forEach(a => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name));
     }
+}
+
+function playAllFav() {
+    if (favType !== 'tracks' || !favTracks.length) return;
+    playerLoadQueue(favTracks, 0, true);
 }
 
 // ---- Playlists ----
@@ -1683,11 +1744,11 @@ async function loadPlaylists() {
 
 async function browsePlTracks(plId, name) {
     const area = document.getElementById('pl-results');
-    area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'loadPlaylists()') + '<div class="loading">Loading...</div>';
+    area.innerHTML = '<div class="loading">Loading...</div>';
     try {
         const tracks = await invoke('get_playlist_tracks', { playlistId: plId });
         playlistTracks = tracks;
-        area.innerHTML = area.innerHTML.replace('<div class="loading">Loading...</div>', '');
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/playlist/${plId}`, name, 'loadPlaylists()', () => tracks);
         renderTrackTable(tracks, 'pl-results', { emptyMsg: 'No tracks' });
     } catch (e) {
         area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
@@ -1755,7 +1816,7 @@ const LOCALES = {
         'toast.fileNotFound':'File not found after download.','toast.dlFailed':'Download failed: {e}',
         'toast.urlCopied':'URL copied','toast.albumRemoved':'"{name}" is unavailable and has been removed.',
         'player.downloading':'Downloading...','player.dlFailed':'Download failed','player.playFailed':'Playback unavailable',
-        'queue.downloading':'Downloading...','queue.completed':'{done}/{total} completed','queue.errors':'{n} errors',
+        'queue.downloading':'Downloading...','queue.queued':'Queued','queue.completed':'{done}/{total} completed','queue.errors':'{n} errors',
         'sel.count':'{n} selected',
     },
     ko: {
@@ -1816,7 +1877,7 @@ const LOCALES = {
         'toast.fileNotFound':'다운로드 완료 후 파일을 찾을 수 없습니다.','toast.dlFailed':'다운로드 실패: {e}',
         'toast.urlCopied':'URL 복사됨','toast.albumRemoved':'"{name}" 앨범을 사용할 수 없어 목록에서 제거했습니다.',
         'player.downloading':'다운로드 중...','player.dlFailed':'다운로드 실패','player.playFailed':'재생 불가',
-        'queue.downloading':'다운로드 중...','queue.completed':'{done}/{total} 완료','queue.errors':'{n}개 오류',
+        'queue.downloading':'다운로드 중...','queue.queued':'대기 중','queue.completed':'{done}/{total} 완료','queue.errors':'{n}개 오류',
         'sel.count':'{n}개 선택됨',
     },
     de: {

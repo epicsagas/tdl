@@ -322,7 +322,7 @@ async fn get_track_local_path(
 
     let artist_name = track.artist_name();
     let album_artist = track.album.as_ref().map(|a| {
-        let v = a.album_artist();
+        let v = a.primary_artist();
         if v.is_empty() { artist_name.clone() } else { v }
     }).unwrap_or_else(|| artist_name.clone());
 
