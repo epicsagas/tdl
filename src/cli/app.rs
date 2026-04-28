@@ -369,7 +369,16 @@ async fn handle_download(urls: Vec<String>, list: Option<String>) -> Result<()> 
     session.login().await?;
 
     let session = Arc::new(Mutex::new(session));
-    let downloader = Downloader::new(session, settings);
+    let downloader = Arc::new(Downloader::new(session, settings));
+
+    // Spawn Ctrl+C handler that cancels the active download queue.
+    let cancel = downloader.cancel.clone();
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            eprintln!("\nCancelling... (current track will finish)");
+            cancel.cancel();
+        }
+    });
 
     let total = all_urls.len() as u64;
     let pb = indicatif::ProgressBar::new(total);
@@ -381,6 +390,9 @@ async fn handle_download(urls: Vec<String>, list: Option<String>) -> Result<()> 
     pb.set_message("Downloading");
 
     for url in &all_urls {
+        if downloader.cancel.is_cancelled() {
+            break;
+        }
         match downloader.download_url(url).await {
             Ok(()) => {}
             Err(e) => {

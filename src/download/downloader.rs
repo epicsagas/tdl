@@ -5,6 +5,7 @@ use anyhow::{anyhow, Context, Result};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::RngExt;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::config::settings::{CoverDimensions, Settings};
 use crate::download::decrypt;
@@ -27,6 +28,7 @@ pub struct Downloader {
     session: Arc<Mutex<TidalSession>>,
     settings: Settings,
     http_client: reqwest::Client,
+    pub cancel: CancellationToken,
 }
 
 impl Downloader {
@@ -40,6 +42,7 @@ impl Downloader {
             session,
             settings,
             http_client,
+            cancel: CancellationToken::new(),
         }
     }
 
@@ -558,10 +561,22 @@ impl Downloader {
         footer.set_style(ProgressStyle::with_template("  {msg}").unwrap());
         footer.set_message(format!("0/{total} completed"));
 
+        let mut completed = 0usize;
+        let mut cancelled = false;
+
         for (i, track) in tracks.iter().enumerate() {
             let pb = &track_pbs[i];
             let num = format!("{:02}", i + 1);
             let label = format!("{num}. {} - {}", track.artist_name(), track.title_display());
+
+            // Check for cancellation before starting next track.
+            if self.cancel.is_cancelled() {
+                pb.set_style(waiting_style.clone());
+                pb.set_message(format!("·  {label}  (cancelled)"));
+                pb.finish();
+                cancelled = true;
+                continue;
+            }
 
             // Switch to active style.
             pb.set_style(track_style.clone());
@@ -582,14 +597,23 @@ impl Downloader {
                 pb.set_message(format!("✗  {label}  ({e})"));
                 pb.finish();
                 tracing::warn!("Failed to download track {} ({}): {e}", track.id, track.title_display());
+            } else {
+                completed += 1;
             }
 
-            let completed = i + 1;
-            let remaining = total - completed;
-            footer.set_message(format!("{completed}/{total} completed  ·  {remaining} remaining"));
+            let remaining = total - (i + 1);
+            if cancelled || self.cancel.is_cancelled() {
+                footer.set_message(format!("{completed}/{total} completed  ·  cancelled"));
+            } else {
+                footer.set_message(format!("{completed}/{total} completed  ·  {remaining} remaining"));
+            }
         }
 
-        footer.set_message(format!("{total}/{total} completed"));
+        if cancelled || self.cancel.is_cancelled() {
+            footer.set_message(format!("{completed}/{total} completed  ·  cancelled"));
+        } else {
+            footer.set_message(format!("{completed}/{total} completed"));
+        }
         footer.finish();
 
         // Generate m3u playlist file when playlist_folder is enabled.
