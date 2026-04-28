@@ -35,6 +35,9 @@ inquire = "0.9"
 opener = { version = "0.8", optional = true }
 ratatui = "0.30"
 crossterm = "0.29"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true , features = [] }
