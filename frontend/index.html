@@ -153,6 +153,8 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .queue-item.cancelled .q-fill { background:var(--text2); width:100%!important; }
 .q-cancel { background:none; border:none; color:var(--text2); cursor:pointer; font-size:13px; padding:0 2px; line-height:1; float:right; }
 .q-cancel:hover { color:var(--error); }
+.q-play { background:none; border:none; color:var(--success); cursor:pointer; font-size:12px; padding:0 4px 0 0; line-height:1; float:right; }
+.q-play:hover { color:var(--accent); }
 .q-tracks { margin-top:4px; max-height:180px; overflow-y:auto; }
 .qt-row { display:flex; align-items:center; gap:4px; padding:1px 0; font-size:11px; color:var(--text2); white-space:nowrap; overflow:hidden; }
 .qt-row .qt-icon { flex-shrink:0; width:14px; text-align:center; }
@@ -1118,7 +1120,9 @@ function renderQueue() {
         const active = item.status === 'downloading' || item.status === 'queued';
         const done = !active;
         const cancelUid = `qc-${id}`;
+        const playUid = `qp-${id}`;
         const cancelBtn = active ? `<button class="q-cancel" id="${cancelUid}" title="Cancel">&#10005;</button>` : '';
+        const playBtn = item.status === 'completed' ? `<button class="q-play" id="${playUid}" title="Play">&#9654;</button>` : '';
         if (active) cancelIds.push({ uid: cancelUid, id });
         const statusText = item.status === 'downloading'
             ? (item.progress || t('queue.downloading'))
@@ -1148,7 +1152,7 @@ function renderQueue() {
         }
 
         parts.push(`<div class="queue-item ${item.status}">
-            <div class="q-name">${cancelBtn}${esc(item.name)}</div>
+            <div class="q-name">${cancelBtn}${playBtn}${esc(item.name)}</div>
             ${tracksHtml}
         </div>`);
     }
@@ -1157,6 +1161,29 @@ function renderQueue() {
         const btn = document.getElementById(uid);
         if (btn) btn.addEventListener('click', () => cancelDownload(id));
     });
+    for (const [id, item] of queue) {
+        if (item.status !== 'completed') continue;
+        const btn = document.getElementById(`qp-${id}`);
+        if (!btn) continue;
+        btn.addEventListener('click', () => playQueueItem(item));
+    }
+}
+
+async function playQueueItem(item) {
+    const m = item.url && item.url.match(/tidal\.com\/browse\/track\/(\d+)/);
+    if (!m) return;
+    const trackId = parseInt(m[1]);
+    let path = null;
+    try { path = await invoke('get_track_local_path', { trackId }); } catch(_) {}
+    if (!path) { showToast('파일을 찾을 수 없습니다', 'warn'); return; }
+    const src = window.__TAURI__?.core?.convertFileSrc
+        ? window.__TAURI__.core.convertFileSrc(path)
+        : `asset://localhost/${encodeURIComponent(path)}`;
+    audio.pause();
+    audio.src = src;
+    audio.play().catch(() => {});
+    document.getElementById('player-title').textContent = item.name;
+    document.getElementById('player-bar').style.display = '';
 }
 
 function clearQueue() {
