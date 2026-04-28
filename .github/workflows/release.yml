@@ -1,14 +1,13 @@
-name: Release Public Binaries
+name: Release Windows Binaries
 
 on:
   push:
     tags:
-      - "v*"
       - "tdl-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to release to public repository (e.g. v0.1.0)"
+        description: "Tag to release (e.g. tdl-v0.2.0)"
         required: true
         type: string
 
@@ -19,79 +18,33 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-    name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            target: aarch64-apple-darwin
-            os_name: darwin
-            arch: arm64
-            bundles: app
-          - os: macos-14
-            target: x86_64-apple-darwin
-            os_name: darwin
-            arch: amd64
-            bundles: app
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-            os_name: linux
-            arch: amd64
-            bundles: deb,appimage
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            os_name: linux
-            arch: arm64
-            bundles: deb,appimage
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            os_name: windows
-            arch: amd64
-            bundles: msi,nsis
-
+  build-windows:
+    name: Build Windows (amd64)
+    runs-on: windows-2022
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: "24"
+          targets: x86_64-pc-windows-msvc
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache cargo
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ matrix.target }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ matrix.target }}-cargo-
-
-      - name: Install Linux dependencies
-        if: startsWith(matrix.os, 'ubuntu')
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
+          key: windows-amd64-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-amd64-cargo-
 
       - name: Install tauri-cli
         run: cargo install tauri-cli --version "^2" --locked
 
+      - name: Build
+        run: cargo tauri build --target x86_64-pc-windows-msvc --bundles msi,nsis
+
       - name: Resolve version
-        id: version
+        id: ver
         shell: bash
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
@@ -100,79 +53,37 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           VER="${TAG#tdl-v}"
-          VER="${VER#v}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "ver=${VER}" >> "$GITHUB_OUTPUT"
 
-      - name: Build binary + GUI bundle
-        run: cargo tauri build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
-
-      - name: Package (Unix)
-        if: matrix.os_name != 'windows'
+      - name: Collect artifacts
         shell: bash
         run: |
-          VER="${{ steps.version.outputs.ver }}"
-          STEM="tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}"
+          VER="${{ steps.ver.outputs.ver }}"
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/tdl dist/tdl
-          tar -czf "dist/${STEM}.tar.gz" -C dist tdl
-          rm dist/tdl
-          echo "TARBALL=${STEM}.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Package (Windows)
-        if: matrix.os_name == 'windows'
-        shell: bash
-        run: |
-          VER="${{ steps.version.outputs.ver }}"
-          STEM="tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}"
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/tdl.exe dist/tdl.exe
-          cd dist && 7z a "${STEM}.zip" tdl.exe && rm tdl.exe && cd ..
-          echo "ZIPFILE=${STEM}.zip" >> "$GITHUB_ENV"
+          # CLI binary
+          cp target/x86_64-pc-windows-msvc/release/tdl.exe dist/tdl.exe
+          cd dist && 7z a "tdl_${VER}_windows_amd64.zip" tdl.exe && rm tdl.exe && cd ..
 
-      - name: Collect GUI bundles (macOS)
-        if: matrix.os_name == 'darwin'
-        shell: bash
-        run: |
-          VER="${{ steps.version.outputs.ver }}"
-          find target/${{ matrix.target }}/release/bundle/macos -name "*.app" -maxdepth 1 -type d | while read f; do
-            tar -czf "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.app.tar.gz" -C "$(dirname "$f")" "$(basename "$f")"
-          done
+          # MSI installer
+          find target/x86_64-pc-windows-msvc/release/bundle/msi -name "*.msi" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_amd64.msi"
 
-      - name: Collect GUI bundles (Linux)
-        if: matrix.os_name == 'linux'
-        shell: bash
-        run: |
-          VER="${{ steps.version.outputs.ver }}"
-          find target/${{ matrix.target }}/release/bundle/deb -name "*.deb" | while read f; do
-            cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.deb"
-          done
-          find target/${{ matrix.target }}/release/bundle/appimage -name "*.AppImage" | while read f; do
-            cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.AppImage"
-          done
-
-      - name: Collect GUI bundles (Windows)
-        if: matrix.os_name == 'windows'
-        shell: bash
-        run: |
-          VER="${{ steps.version.outputs.ver }}"
-          find target/${{ matrix.target }}/release/bundle/msi -name "*.msi" | while read f; do
-            cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}.msi"
-          done
-          find target/${{ matrix.target }}/release/bundle/nsis -name "*.exe" | while read f; do
-            cp "$f" "dist/tdl_${VER}_${{ matrix.os_name }}_${{ matrix.arch }}-setup.exe"
-          done
+          # NSIS installer
+          find target/x86_64-pc-windows-msvc/release/bundle/nsis -name "*.exe" | head -1 | \
+              xargs -I{} cp {} "dist/tdl_${VER}_windows_amd64-setup.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tdl-${{ matrix.os_name }}-${{ matrix.arch }}
+          name: tdl-windows-amd64
           path: dist/
           if-no-files-found: error
 
   publish:
-    name: Publish to Public Repo
-    needs: build
+    name: Publish to Release
+    needs: build-windows
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -180,22 +91,11 @@ jobs:
       PUBLIC_RELEASE_REPO: ${{ vars.PUBLIC_RELEASE_REPO }}
       PUBLIC_RELEASE_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
     steps:
-      - name: Validate required configuration
+      - name: Validate secrets
         run: |
-          if [ -z "${PUBLIC_RELEASE_REPO}" ]; then
-            echo "PUBLIC_RELEASE_REPO is not set (repo variable)."
-            exit 1
-          fi
-          if [ -z "${PUBLIC_RELEASE_TOKEN}" ]; then
-            echo "PUBLIC_RELEASE_TOKEN is not set (repo secret)."
-            exit 1
-          fi
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: downloaded-artifacts
-          merge-multiple: true
+          [ -z "$PUBLIC_RELEASE_REPO" ]  && echo "PUBLIC_RELEASE_REPO not set"  && exit 1
+          [ -z "$PUBLIC_RELEASE_TOKEN" ] && echo "PUBLIC_RELEASE_TOKEN not set" && exit 1
+          echo "ok"
 
       - name: Resolve tag
         id: tag
@@ -205,122 +105,27 @@ jobs:
           else
             TAG="${GITHUB_REF_NAME}"
           fi
-          # Normalize: v0.1.0 → tdl-v0.1.0
-          if [[ "$TAG" =~ ^v ]]; then
-            TAG="tdl-${TAG}"
-          fi
+          [[ "$TAG" =~ ^v ]] && TAG="tdl-${TAG}"
           echo "value=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Create checksums
-        run: |
-          cd downloaded-artifacts
-          find . -type f ! -name "SHA256SUMS.txt" -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
-
-      - name: Publish release to public repository
-        env:
-          GH_TOKEN: ${{ env.PUBLIC_RELEASE_TOKEN }}
-          RELEASE_TAG: ${{ steps.tag.outputs.value }}
-        run: |
-          set -euo pipefail
-          if gh release view "$RELEASE_TAG" --repo "$PUBLIC_RELEASE_REPO" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists in $PUBLIC_RELEASE_REPO"
-          else
-            gh release create "$RELEASE_TAG" \
-              --repo "$PUBLIC_RELEASE_REPO" \
-              --title "$RELEASE_TAG" \
-              --notes "Automated binary release from private source repository."
-          fi
-          mapfile -t FILES < <(find downloaded-artifacts -type f | sort)
-          [ "${#FILES[@]}" -eq 0 ] && echo "No files found." && exit 1
-          gh release upload "$RELEASE_TAG" "${FILES[@]}" \
-            --repo "$PUBLIC_RELEASE_REPO" \
-            --clobber
-
-  update-homebrew:
-    name: Update Homebrew Tap
-    needs: publish
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          merge-multiple: true
-          path: artifacts
+          name: tdl-windows-amd64
+          path: dist/
 
-      - name: Compute SHA256
-        id: sha
-        run: |
-          echo "darwin_arm=$(sha256sum artifacts/tdl_*_darwin_arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "darwin_amd=$(sha256sum artifacts/tdl_*_darwin_amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "linux_arm=$(sha256sum artifacts/tdl_*_linux_arm64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-          echo "linux_amd=$(sha256sum artifacts/tdl_*_linux_amd64.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
-          # Normalize: v0.1.0 → tdl-v0.1.0
-          if [[ "$TAG" =~ ^v ]]; then
-            TAG="tdl-${TAG}"
-          fi
-          VER="${TAG#tdl-v}"
-          echo "ver=${VER}" >> "$GITHUB_OUTPUT"
-          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout homebrew tap
-        uses: actions/checkout@v4
-        with:
-          repository: epicsagas/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-
-      - name: Update formula
+      - name: Publish
         env:
-          VER: ${{ steps.version.outputs.ver }}
-          TAG: ${{ steps.version.outputs.tag }}
-          SHA_DARWIN_ARM: ${{ steps.sha.outputs.darwin_arm }}
-          SHA_DARWIN_AMD: ${{ steps.sha.outputs.darwin_amd }}
-          SHA_LINUX_ARM: ${{ steps.sha.outputs.linux_arm }}
-          SHA_LINUX_AMD: ${{ steps.sha.outputs.linux_amd }}
+          GH_TOKEN: ${{ env.PUBLIC_RELEASE_TOKEN }}
+          TAG: ${{ steps.tag.outputs.value }}
         run: |
-          printf 'class Tdl < Formula\n' > Formula/tdl.rb
-          printf '  desc "Tidal music downloader -- tracks, albums, playlists, mixes, and videos"\n' >> Formula/tdl.rb
-          printf '  homepage "https://github.com/epicsagas/tools"\n' >> Formula/tdl.rb
-          printf '  version "%s"\n' "$VER" >> Formula/tdl.rb
-          printf '  license "Apache-2.0"\n\n' >> Formula/tdl.rb
-          printf '  on_macos do\n' >> Formula/tdl.rb
-          printf '    if Hardware::CPU.arm?\n' >> Formula/tdl.rb
-          printf '      url "https://github.com/epicsagas/tools/releases/download/%s/tdl_%s_darwin_arm64.tar.gz"\n' "$TAG" "$VER" >> Formula/tdl.rb
-          printf '      sha256 "%s"\n' "$SHA_DARWIN_ARM" >> Formula/tdl.rb
-          printf '    else\n' >> Formula/tdl.rb
-          printf '      url "https://github.com/epicsagas/tools/releases/download/%s/tdl_%s_darwin_amd64.tar.gz"\n' "$TAG" "$VER" >> Formula/tdl.rb
-          printf '      sha256 "%s"\n' "$SHA_DARWIN_AMD" >> Formula/tdl.rb
-          printf '    end\n' >> Formula/tdl.rb
-          printf '  end\n\n' >> Formula/tdl.rb
-          printf '  on_linux do\n' >> Formula/tdl.rb
-          printf '    if Hardware::CPU.arm?\n' >> Formula/tdl.rb
-          printf '      url "https://github.com/epicsagas/tools/releases/download/%s/tdl_%s_linux_arm64.tar.gz"\n' "$TAG" "$VER" >> Formula/tdl.rb
-          printf '      sha256 "%s"\n' "$SHA_LINUX_ARM" >> Formula/tdl.rb
-          printf '    else\n' >> Formula/tdl.rb
-          printf '      url "https://github.com/epicsagas/tools/releases/download/%s/tdl_%s_linux_amd64.tar.gz"\n' "$TAG" "$VER" >> Formula/tdl.rb
-          printf '      sha256 "%s"\n' "$SHA_LINUX_AMD" >> Formula/tdl.rb
-          printf '    end\n' >> Formula/tdl.rb
-          printf '  end\n\n' >> Formula/tdl.rb
-          printf '  def install\n' >> Formula/tdl.rb
-          printf '    bin.install "tdl"\n' >> Formula/tdl.rb
-          printf '  end\n\n' >> Formula/tdl.rb
-          printf '  test do\n' >> Formula/tdl.rb
-          printf '    assert_match "tdl", shell_output("#{bin}/tdl --version 2>&1")\n' >> Formula/tdl.rb
-          printf '  end\n' >> Formula/tdl.rb
-          printf 'end\n' >> Formula/tdl.rb
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/tdl.rb
-          git diff --cached --quiet || git commit -m "tdl ${{ steps.version.outputs.ver }}"
-          git push
+          set -euo pipefail
+          if ! gh release view "$TAG" --repo "$PUBLIC_RELEASE_REPO" &>/dev/null; then
+              gh release create "$TAG" \
+                  --repo "$PUBLIC_RELEASE_REPO" \
+                  --title "$TAG" \
+                  --notes "See release notes."
+          fi
+          gh release upload "$TAG" dist/* \
+              --repo "$PUBLIC_RELEASE_REPO" \
+              --clobber
