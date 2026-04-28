@@ -632,9 +632,18 @@ impl Album {
         {
             return first.name.clone();
         }
+        // Fallback: single artist field. Tidal sometimes returns a comma-joined
+        // string like "Artist A, Artist B" here — take only the first name.
         self.artist
             .as_ref()
-            .map(|a| a.name.clone())
+            .map(|a| {
+                a.name
+                    .split(',')
+                    .next()
+                    .unwrap_or(&a.name)
+                    .trim()
+                    .to_string()
+            })
             .unwrap_or_default()
     }
 
@@ -735,6 +744,27 @@ mod tests {
         }"#;
         let album: Album = serde_json::from_str(json).unwrap();
         assert_eq!(album.album_artist(), "Queen");
+    }
+
+    #[test]
+    fn primary_artist_uses_first_main() {
+        let json = r#"{
+            "id": 1, "name": "Test",
+            "artists": [
+                {"id": 1, "name": "MACROSS 82-99", "role": "MAIN"},
+                {"id": 2, "name": "Diana Shroomy", "role": "FEATURED"}
+            ]
+        }"#;
+        let album: Album = serde_json::from_str(json).unwrap();
+        assert_eq!(album.primary_artist(), "MACROSS 82-99");
+    }
+
+    #[test]
+    fn primary_artist_splits_comma_fallback() {
+        // Tidal sometimes returns a comma-joined string in the single artist field
+        let json = r#"{"id": 1, "name": "Test", "artist": {"id": 1, "name": "MACROSS 82-99, Diana Shroomy"}}"#;
+        let album: Album = serde_json::from_str(json).unwrap();
+        assert_eq!(album.primary_artist(), "MACROSS 82-99");
     }
 
     #[test]

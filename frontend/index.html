@@ -776,69 +776,74 @@ let playerGen = 0; // incremented on every playerPlayAt call; guards stale downl
 
 async function playerLoadQueue(tracks, startIdx, downloadAll) {
     playerQueue = tracks;
-    const loopGen = ++playerGen; // bump once; playerPlayAt will NOT bump again below
-    if (downloadAll) {
-        // Register ALL tracks in the UI queue at once (single DOM render).
-        // Order: startIdx first so it appears at the top, rest follow in track order.
-        const ordered = [startIdx, ...tracks.map((_, i) => i).filter(i => i !== startIdx)];
-        const qidMap = new Map(); // trackIndex → qid
-        for (const i of ordered) {
-            const t2 = tracks[i];
-            const id = Date.now().toString() + Math.random().toString(36).slice(2);
-            const isStart = i === startIdx;
-            queue.set(id, {
-                url: `https://tidal.com/browse/track/${t2.id}`,
-                name: `${artistName(t2)} - ${trackTitle(t2)}`,
-                status: isStart ? 'downloading' : 'queued',
-                progress: '', tracks: null, activeTrack: -1,
-            });
-            qidMap.set(i, id);
-        }
-        renderQueue(); // single render for the whole batch
+    const loopGen = ++playerGen;
 
-        // Kick off playback of startIdx immediately (fire-and-forget).
-        // playerPlayAt will download if needed and start audio as soon as ready.
-        playerPlayAt(startIdx, loopGen).then(() => {
-            updateQueue(qidMap.get(startIdx), 'completed');
+    if (!downloadAll) {
+        await playerPlayAt(startIdx, loopGen);
+        return;
+    }
+
+    // --- downloadAll mode ---
+    // 1. Register all tracks in the UI queue immediately (single DOM render)
+    // 2. Serial download loop: download one at a time, play startIdx as soon as it's ready
+    // 3. loopGen guard: if user triggers a new queue, loop exits cleanly
+
+    const ordered = [startIdx, ...tracks.map((_, i) => i).filter(i => i !== startIdx)];
+    const qidMap = new Map();
+    for (const i of ordered) {
+        const t2 = tracks[i];
+        const id = `q-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        queue.set(id, {
+            url: `https://tidal.com/browse/track/${t2.id}`,
+            name: `${artistName(t2)} - ${trackTitle(t2)}`,
+            status: 'queued', progress: '', tracks: null, activeTrack: -1,
         });
+        qidMap.set(i, id);
+    }
+    renderQueue();
 
-        // Serial download chain for remaining tracks — one at a time with Rust's
-        // random delay between each so we don't hammer the API.
-        (async () => {
-            for (const i of ordered.slice(1)) {
-                if (playerGen !== loopGen) {
-                    // User switched queue — clean up remaining queued items
-                    for (const j of ordered.slice(ordered.indexOf(i))) {
-                        queue.delete(qidMap.get(j));
-                    }
-                    break;
-                }
-                const qid = qidMap.get(i);
-                const trackId = tracks[i].id;
-                const url = `https://tidal.com/browse/track/${trackId}`;
+    let startPlayed = false;
 
-                // Skip API entirely if file already exists locally
-                let localPath = null;
-                try { localPath = await invoke('get_track_local_path', { trackId }); } catch(_) {}
-                if (localPath) {
-                    updateQueue(qid, 'completed');
-                    continue;
-                }
+    (async () => {
+        for (const i of ordered) {
+            if (playerGen !== loopGen) {
+                // New queue started — stop this loop but leave queue items visible
+                break;
+            }
 
+            const qid = qidMap.get(i);
+
+            // User cancelled this item — skip it
+            if (!queue.has(qid)) continue;
+
+            const trackId = tracks[i].id;
+            const url = `https://tidal.com/browse/track/${trackId}`;
+
+            // Check local file first — no API call needed if already downloaded
+            let localPath = null;
+            try { localPath = await invoke('get_track_local_path', { trackId }); } catch(_) {}
+
+            if (!queue.has(qid)) continue; // cancelled while awaiting local path check
+
+            if (localPath) {
+                updateQueue(qid, 'completed');
+            } else {
                 updateQueue(qid, 'downloading');
                 try {
                     await invoke('download_url', { url, queueId: qid });
-                    updateQueue(qid, 'completed');
+                    if (queue.has(qid)) updateQueue(qid, 'completed');
                 } catch (e) {
-                    updateQueue(qid, 'error', String(e));
+                    if (queue.has(qid)) updateQueue(qid, 'error', String(e));
                 }
             }
-            renderQueue();
-        })();
-        return;
-    }
-    // Non-downloadAll: just play (gen already bumped above)
-    await playerPlayAt(startIdx, loopGen);
+
+            // Play startIdx the moment it's downloaded (first time only)
+            if (i === startIdx && !startPlayed && playerGen === loopGen) {
+                startPlayed = true;
+                playerPlayAt(startIdx, loopGen);
+            }
+        }
+    })();
 }
 
 async function playerPlayAt(idx, existingGen) {
@@ -867,6 +872,10 @@ async function playerPlayAt(idx, existingGen) {
     } else {
         const trackUrl = `https://tidal.com/browse/track/${trackId}`;
         const name = `${artistName(t)} - ${trackTitle(t)}`;
+
+        // Stop current playback immediately while we wait for the download
+        audio.pause();
+        audio.src = '';
 
         // show pending state immediately
         const bar = document.getElementById('player-bar');
@@ -1146,11 +1155,13 @@ function clearQueue() {
 }
 
 async function cancelDownload(queueId) {
+    // Remove from JS queue immediately regardless of status
+    queue.delete(queueId);
+    renderQueue();
+    // Signal Rust to cancel if it's actively downloading
     try {
         await invoke('cancel_download', { queueId });
-    } catch (e) {
-        console.error('cancel_download error', e);
-    }
+    } catch (_) {}
 }
 
 // ---- Download ----
