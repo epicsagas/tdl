@@ -774,6 +774,22 @@ let playerQueue = [];
 let playerIdx = -1;
 let playerGen = 0;  // guards stale playerPlayAt calls
 let dlGen = 0;      // guards the serial download loop; independent of playerGen
+let _dlDelayEnabled = true;
+let _dlDelayMin = 3.0;
+let _dlDelayMax = 5.0;
+
+// Load delay settings once on startup
+invoke('get_settings').then(s => {
+    _dlDelayEnabled = s.download_delay !== false;
+    _dlDelayMin = typeof s.download_delay_sec_min === 'number' ? s.download_delay_sec_min : 3.0;
+    _dlDelayMax = typeof s.download_delay_sec_max === 'number' ? s.download_delay_sec_max : 5.0;
+}).catch(() => {});
+
+function dlDelay() {
+    if (!_dlDelayEnabled || _dlDelayMax <= _dlDelayMin) return Promise.resolve();
+    const ms = (_dlDelayMin + Math.random() * (_dlDelayMax - _dlDelayMin)) * 1000;
+    return new Promise(r => setTimeout(r, ms));
+}
 
 async function playerLoadQueue(tracks, startIdx, downloadAll) {
     playerQueue = tracks;
@@ -829,6 +845,8 @@ async function playerLoadQueue(tracks, startIdx, downloadAll) {
                 } catch (e) {
                     if (queue.has(qid)) updateQueue(qid, 'error', String(e));
                 }
+                if (dlGen !== myDlGen) break;
+                await dlDelay();
             }
 
             // Trigger playback of startIdx the moment it's ready (first time only)
@@ -1577,6 +1595,8 @@ function dlAllTracks(tracks) {
             } catch (e) {
                 if (queue.has(qid)) updateQueue(qid, 'error', String(e));
             }
+            if (dlGen !== myDlGen) break;
+            await dlDelay();
         }
     })();
 }

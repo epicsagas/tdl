@@ -402,7 +402,10 @@ async fn do_download(
 ) -> Result<(), String> {
     info!(url = %url, queue_id = %queue_id, "Download requested");
     let session = ensure_session(state).await?;
-    let settings = Settings::load().map_err(|e| e.to_string())?;
+    let mut settings = Settings::load().map_err(|e| e.to_string())?;
+    // GUI serializes downloads in JS with its own delay; disable Rust-side delay
+    // so invoke() resolves promptly and JS can update the queue status immediately.
+    settings.download_delay = false;
     let downloader = Downloader::with_cancel(Arc::clone(&session), settings, cancel.clone());
     let (media_type, id) = search::parse_media_url(url).map_err(|e| e.to_string())?;
 
