@@ -38,6 +38,7 @@ crossterm = "0.29"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+tauri-plugin-single-instance = { version = "2", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", optional = true , features = [] }
@@ -49,4 +50,4 @@ optional = true
 
 [features]
 default = ["gui"]
-gui = ["tauri", "tauri-build", "opener"]
+gui = ["tauri", "tauri-build", "opener", "dep:tauri-plugin-single-instance"]

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 use tracing::{info, error};
 
 use crate::config::settings::Settings;
@@ -622,6 +622,12 @@ async fn do_download(
 
 pub fn run_gui() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.set_focus();
+            }
+        }))
         .manage(AppState {
             session: Arc::new(Mutex::new(None)),
             pkce: Arc::new(Mutex::new(None)),
