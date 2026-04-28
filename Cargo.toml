@@ -44,7 +44,7 @@ tauri-build = { version = "2", optional = true , features = [] }
 
 [dependencies.tauri]
 version = "2"
-features = ["native-tls"]
+features = ["native-tls", "protocol-asset"]
 optional = true
 
 [features]

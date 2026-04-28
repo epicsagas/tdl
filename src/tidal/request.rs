@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::{debug, warn};
 
 const TIDAL_API_V1: &str = "https://api.tidal.com/v1/";
 const TIDAL_API_V2: &str = "https://api.tidal.com/v2/";
@@ -234,6 +235,7 @@ impl TidalRequest {
 
             let request = self.attach_auth_header(request);
 
+            debug!(url = %url, attempt = attempt, "HTTP GET");
             match request.send().await {
                 Ok(resp) => {
                     let status = resp.status();
@@ -247,9 +249,11 @@ impl TidalRequest {
                             ));
                         }
                         let delay_secs = BACKOFF_FACTOR * 2f64.powi(attempt as i32);
+                        warn!(url = %url, status = %status, attempt = attempt, delay_secs = delay_secs, "Rate-limited or server error, retrying");
                         sleep(Duration::from_secs_f64(delay_secs)).await;
                         continue;
                     }
+                    debug!(url = %url, status = %status, "HTTP response");
                     return Ok(resp);
                 }
                 Err(e) => {
@@ -260,6 +264,7 @@ impl TidalRequest {
                         ));
                     }
                     let delay_secs = BACKOFF_FACTOR * 2f64.powi(attempt as i32);
+                    warn!(url = %url, attempt = attempt, "Request error: {e}. Retrying in {delay_secs:.1}s");
                     sleep(Duration::from_secs_f64(delay_secs)).await;
                     continue;
                 }

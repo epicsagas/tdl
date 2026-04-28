@@ -1,13 +1,16 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::process::Command;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tauri::{Emitter, State};
+use tracing::{info, error};
 
 use crate::config::settings::Settings;
 use crate::config::token::Token;
 use crate::download::downloader::Downloader;
+use crate::pathfmt::format::{build_track_path, check_file_exists};
 use crate::tidal::media::MediaType;
 use crate::tidal::search;
 use crate::tidal::session::TidalSession;
@@ -90,9 +93,7 @@ async fn login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), 
     let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
     session
         .login_with_url_handler(|url, code| {
-            eprintln!("[tdl-gui] login url_handler called: {}", url);
-            let emit_result = app.emit("login-url", serde_json::json!({ "url": url, "code": code }));
-            eprintln!("[tdl-gui] emit result: {:?}", emit_result);
+            let _ = app.emit("login-url", serde_json::json!({ "url": url, "code": code }));
             let _ = open_url(url);
         })
         .await
@@ -281,6 +282,81 @@ async fn get_artist_albums(
     serde_json::to_value(&albums).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_track_audio_info(
+    state: State<'_, AppState>,
+    track_id: u64,
+) -> Result<serde_json::Value, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+
+    let (manifest, playback_info) = crate::tidal::stream::fetch_track_stream(
+        &sess.request,
+        track_id,
+        &settings.quality_audio,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "bitDepth":   playback_info.bit_depth,
+        "sampleRate": playback_info.sample_rate.or(manifest.sample_rate),
+        "codec":      manifest.codecs,
+        "mimeType":   manifest.mime_type,
+    }))
+}
+
+#[tauri::command]
+async fn get_track_local_path(
+    state: State<'_, AppState>,
+    track_id: u64,
+) -> Result<Option<String>, String> {
+    let session = ensure_session(&state).await?;
+    let sess = session.lock().await;
+    let settings = Settings::load().map_err(|e| e.to_string())?;
+
+    let track = search::get_track(&sess.request, track_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let artist_name = track.artist_name();
+    let album_artist = track.album.as_ref().map(|a| {
+        let v = a.album_artist();
+        if v.is_empty() { artist_name.clone() } else { v }
+    }).unwrap_or_else(|| artist_name.clone());
+
+    let info = crate::pathfmt::format::MediaInfo {
+        artist_name: Some(artist_name),
+        album_artist: Some(album_artist),
+        track_title: Some(track.title_display()),
+        album_title: track.album.as_ref().map(|a| a.name.clone()),
+        album_track_num: track.track_num,
+        album_num_tracks: track.album.as_ref().and_then(|a| a.num_tracks),
+        track_id: Some(track.id),
+        album_id: track.album.as_ref().map(|a| a.id),
+        track_duration_seconds: track.duration,
+        album_year: track.album.as_ref().and_then(|a| a.year_str()),
+        track_quality: track.audio_quality.as_ref().map(|q| format!("{q:?}")),
+        track_explicit: track.explicit,
+        album_explicit: track.album.as_ref().and_then(|a| a.explicit),
+        album_num_volumes: track.album.as_ref().and_then(|a| a.num_volumes),
+        track_volume_num: track.volume_num,
+        isrc: track.isrc.clone(),
+        ..Default::default()
+    };
+
+    let relative = build_track_path(&info, settings.track_num_pad_zero);
+    let base = settings.download_base_path.replace('~', &dirs::home_dir()
+        .unwrap_or_default()
+        .to_string_lossy());
+    let stem = PathBuf::from(format!("{}/{}", base, relative));
+    let audio_extensions = ["flac", "m4a", "mp3", "mp4"];
+
+    Ok(check_file_exists(&stem, &audio_extensions)
+        .map(|p| p.to_string_lossy().into_owned()))
+}
+
 // ---------------------------------------------------------------------------
 // Download with progress events
 // ---------------------------------------------------------------------------
@@ -324,9 +400,10 @@ async fn do_download(
     queue_id: &str,
     cancel: &CancellationToken,
 ) -> Result<(), String> {
+    info!(url = %url, queue_id = %queue_id, "Download requested");
     let session = ensure_session(state).await?;
     let settings = Settings::load().map_err(|e| e.to_string())?;
-    let downloader = Downloader::new(Arc::clone(&session), settings);
+    let downloader = Downloader::with_cancel(Arc::clone(&session), settings, cancel.clone());
     let (media_type, id) = search::parse_media_url(url).map_err(|e| e.to_string())?;
 
     macro_rules! cancelled {
@@ -349,11 +426,13 @@ async fn do_download(
             let result = downloader.download_item(media_type, &id).await;
             match result {
                 Ok(()) => {
+                    info!(url = %url, queue_id = %queue_id, "Download complete");
                     app_handle
                         .emit("download-complete", serde_json::json!({"url": url, "queueId": queue_id}))
                         .ok();
                 }
                 Err(e) => {
+                    error!(url = %url, queue_id = %queue_id, "Download failed: {e}");
                     app_handle
                         .emit(
                             "download-error",
@@ -383,10 +462,24 @@ async fn do_download(
             };
 
             let total = tracks.len();
+            let track_list: Vec<serde_json::Value> = tracks
+                .iter()
+                .enumerate()
+                .map(|(i, t)| serde_json::json!({
+                    "index": i,
+                    "title": format!("{:02}. {} - {}", i + 1, t.artist_name(), t.title_display()),
+                }))
+                .collect();
+
             app_handle
                 .emit(
                     "download-start",
-                    serde_json::json!({"url": url, "queueId": queue_id, "total": total}),
+                    serde_json::json!({
+                        "url": url,
+                        "queueId": queue_id,
+                        "total": total,
+                        "tracks": track_list,
+                    }),
                 )
                 .ok();
 
@@ -401,21 +494,47 @@ async fn do_download(
                             "queueId": queue_id,
                             "current": i + 1,
                             "total": total,
+                            "trackIndex": i,
                             "track": title,
                         }),
                     )
                     .ok();
 
-                if let Err(e) = downloader
+                match downloader
                     .download_item(MediaType::Track, &track.id.to_string())
                     .await
                 {
-                    app_handle
-                        .emit(
-                            "download-error",
-                            serde_json::json!({"url": url, "queueId": queue_id, "track": title, "error": e.to_string()}),
-                        )
-                        .ok();
+                    Ok(()) => {
+                        app_handle
+                            .emit(
+                                "track-done",
+                                serde_json::json!({
+                                    "queueId": queue_id,
+                                    "trackIndex": i,
+                                    "status": "ok",
+                                }),
+                            )
+                            .ok();
+                    }
+                    Err(e) => {
+                        app_handle
+                            .emit(
+                                "track-done",
+                                serde_json::json!({
+                                    "queueId": queue_id,
+                                    "trackIndex": i,
+                                    "status": "error",
+                                    "error": e.to_string(),
+                                }),
+                            )
+                            .ok();
+                        app_handle
+                            .emit(
+                                "download-error",
+                                serde_json::json!({"url": url, "queueId": queue_id, "track": title, "error": e.to_string()}),
+                            )
+                            .ok();
+                    }
                 }
             }
 
@@ -523,6 +642,8 @@ pub fn run_gui() {
             get_artist_albums,
             download_url,
             cancel_download,
+            get_track_local_path,
+            get_track_audio_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

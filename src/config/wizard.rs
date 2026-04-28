@@ -168,6 +168,7 @@ pub fn run(current: &Settings) -> Result<Settings> {
         symlink_to_track,
         metadata_replay_gain,
         playlist_format: current.playlist_format.clone(),
+        log_level: current.log_level.clone(),
     };
 
     // --- Confirm ---

@@ -6,6 +6,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rand::RngExt;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+use tracing::{debug, info, warn};
 
 use crate::config::settings::{CoverDimensions, Settings};
 use crate::download::decrypt;
@@ -34,6 +35,10 @@ pub struct Downloader {
 impl Downloader {
     /// Create a new downloader backed by the given shared session.
     pub fn new(session: Arc<Mutex<TidalSession>>, settings: Settings) -> Self {
+        Self::with_cancel(session, settings, CancellationToken::new())
+    }
+
+    pub fn with_cancel(session: Arc<Mutex<TidalSession>>, settings: Settings, cancel: CancellationToken) -> Self {
         let http_client = reqwest::Client::builder()
             .user_agent("Mozilla/5.0 (Linux; Android 12; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36")
             .build()
@@ -42,7 +47,7 @@ impl Downloader {
             session,
             settings,
             http_client,
-            cancel: CancellationToken::new(),
+            cancel,
         }
     }
 
@@ -63,6 +68,7 @@ impl Downloader {
     /// (for albums, playlists, mixes, artists).
     pub async fn download_url(&self, url: &str) -> Result<()> {
         let (media_type, id) = search::parse_media_url(url)?;
+        info!(media_type = ?media_type, id = %id, "Starting download");
 
         match media_type {
             MediaType::Track | MediaType::Video => {
@@ -77,11 +83,13 @@ impl Downloader {
                     let artist_id: u64 = id.parse().context("Invalid artist ID")?;
                     search::get_artist_albums(&sess.request, artist_id).await?
                 };
+                info!(album_count = albums.len(), "Artist albums fetched");
                 for album in &albums {
                     if let Err(e) = self
                         .download_collection(MediaType::Album, &album.id.to_string())
                         .await
                     {
+                        warn!(album_id = album.id, album = %album.name, "Failed to download album: {e}");
                         println!(
                             "Warning: failed to download album '{}' ({}): {e}",
                             album.name, album.id
@@ -133,6 +141,7 @@ impl Downloader {
 
         let title = track.title_display();
         let artist = track.artist_name();
+        info!(track_id = numeric_id, artist = %artist, title = %title, "Track metadata fetched");
         if track_pb.is_none() {
             println!("Downloading: {artist} - {title}");
         }
@@ -155,6 +164,7 @@ impl Downloader {
         let audio_extensions = ["flac", "m4a", "mp3", "mp4", "ts"];
         if self.settings.skip_existing
             && let Some(existing) = check_file_exists(&stem_path, &audio_extensions) {
+                debug!(path = %existing.display(), "Skipping existing file");
                 if let Some(pb) = track_pb {
                     pb.set_message(format!("⏭  {artist} - {title}"));
                     pb.finish();
@@ -188,6 +198,12 @@ impl Downloader {
             stream::fetch_track_stream(&sess.request, track.id, &self.settings.quality_audio)
                 .await?
         };
+        debug!(
+            codec = manifest.codecs.as_deref().unwrap_or("?"),
+            segments = manifest.urls.len(),
+            encrypted = manifest.is_encrypted,
+            "Stream manifest fetched"
+        );
 
         // Now we know the actual codec — pick the correct extension.
         let ext = extension_guess(
@@ -201,6 +217,7 @@ impl Downloader {
         // Append extension directly — do NOT use `.with_extension()` because the
         // track title may contain a dot, which would be misread as a file extension.
         let dest_path = PathBuf::from(format!("{}/{}{}", base, relative, ext));
+        debug!(dest = %dest_path.display(), "Destination path resolved");
         println!("  Destination: {}", dest_path.display());
         if let Some(parent) = dest_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
@@ -248,6 +265,7 @@ impl Downloader {
         // --- 6. Decrypt if encrypted ---------------------------------------
         if manifest.is_encrypted
             && let Some(ref key_id) = manifest.encryption_key {
+                debug!("Decrypting encrypted stream");
                 let (key, nonce) = decrypt::decrypt_security_token(key_id)
                     .context("Failed to decrypt security token")?;
 
@@ -351,10 +369,12 @@ impl Downloader {
                 if self.settings.lyrics_embed { lyrics_text.clone() } else { None },
             );
             if let Err(e) = write_metadata(&final_path, &meta) {
+                warn!(path = %final_path.display(), "Failed to write metadata: {e}");
                 println!("Warning: failed to write metadata: {e}");
             }
         }
 
+        info!(track_id = numeric_id, path = %final_path.display(), "Track saved");
         if let Some(pb) = track_pb {
             pb.set_message(format!("✓  {artist} - {title}"));
             pb.finish();
@@ -596,7 +616,7 @@ impl Downloader {
                 pb.set_style(waiting_style.clone());
                 pb.set_message(format!("✗  {label}  ({e})"));
                 pb.finish();
-                tracing::warn!("Failed to download track {} ({}): {e}", track.id, track.title_display());
+                warn!(track_id = track.id, title = %track.title_display(), "Track download failed: {e}");
             } else {
                 completed += 1;
             }
@@ -681,7 +701,7 @@ impl Downloader {
                 .album
                 .as_ref()
                 .map(|a| {
-                    let v = a.album_artist();
+                    let v = a.primary_artist();
                     if v.is_empty() { track.artist_name() } else { v }
                 })
                 .or_else(|| Some(track.artist_name())),

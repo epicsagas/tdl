@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rand::RngExt;
-
+use tracing::info;
 
 use crate::config::settings::Settings;
 use crate::config::token::Token;
@@ -183,6 +183,7 @@ impl TidalSession {
     // -----------------------------------------------------------------------
 
     /// Refresh the access token using the stored refresh token.
+    #[tracing::instrument(skip(self), name = "token_refresh")]
     pub async fn refresh_token(&mut self) -> Result<()> {
         let refresh_token = self
             .token
@@ -215,6 +216,7 @@ impl TidalSession {
         }
 
         self.apply_token_response(&token_resp);
+        info!("Access token refreshed successfully");
         Ok(())
     }
 
@@ -311,6 +313,7 @@ impl TidalSession {
                     self.apply_token_response(&token_resp);
                     let session = self.validate_session().await?;
                     self.set_session_info(&session);
+                    info!(user_id = ?session.user_id, country = ?session.country_code, "OAuth device login successful");
                     println!("Login successful.");
                     return Ok(());
                 }

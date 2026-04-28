@@ -69,6 +69,8 @@ pub struct Settings {
     pub downloads_concurrent_max: usize,
     pub symlink_to_track: bool,
     pub metadata_replay_gain: bool,
+    /// Log verbosity: "error", "warn", "info", "debug", "trace"
+    pub log_level: String,
 }
 
 impl Default for Settings {
@@ -97,6 +99,7 @@ impl Default for Settings {
             downloads_concurrent_max: 3,
             symlink_to_track: false,
             metadata_replay_gain: true,
+            log_level: "info".to_string(),
         }
     }
 }

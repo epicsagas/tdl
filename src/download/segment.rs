@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use futures::stream::{FuturesUnordered, StreamExt};
+use rand::RngExt;
 use std::path::{Path, PathBuf};
 use tokio::io::AsyncWriteExt;
 
@@ -14,9 +15,11 @@ pub struct SegmentResult {
 
 /// Download all segments in parallel and merge them into a single file.
 ///
-/// Segments are downloaded to temporary files in the same directory as the output,
-/// sorted by segment ID, then concatenated into the final output file.
-/// Temporary segment files are cleaned up after merging.
+/// Segments are downloaded into a private temporary directory under the system
+/// temp folder (e.g. `/tmp/tdl-seg-<random>/`).  The directory is isolated per
+/// call so concurrent track downloads never share segment file names.  After a
+/// successful merge the temp directory is removed entirely; on failure it is
+/// also cleaned up to avoid leaving debris in the OS temp folder.
 pub async fn download_and_merge(
     urls: &[String],
     output_path: &Path,
@@ -28,12 +31,15 @@ pub async fn download_and_merge(
         return Err(anyhow!("No segment URLs provided"));
     }
 
-    let temp_dir = output_path
-        .parent()
-        .ok_or_else(|| anyhow!("Output path has no parent directory"))?;
+    // Use a unique temp directory per download so parallel tracks can't collide.
+    let temp_dir = std::env::temp_dir().join(format!("tdl-seg-{}", unique_id()));
+    tokio::fs::create_dir_all(&temp_dir)
+        .await
+        .map_err(|e| anyhow!("Failed to create temp dir {}: {e}", temp_dir.display()))?;
+    let temp_dir = temp_dir.as_path();
 
     // Create a semaphore-like pool using FuturesUnordered with bounded concurrency.
-    let mut futures = FuturesUnordered::new();
+    let mut futures: FuturesUnordered<_> = FuturesUnordered::new();
     let mut urls_iter = urls.iter().enumerate().peekable();
 
     // Seed the pool with up to max_concurrent tasks.
@@ -60,6 +66,8 @@ pub async fn download_and_merge(
         }
 
         if !result.success {
+            // Clean up the temp directory before returning the error.
+            let _ = tokio::fs::remove_dir_all(temp_dir).await;
             return Err(anyhow!(
                 "Segment {} failed to download: {}",
                 result.id,
@@ -84,10 +92,10 @@ pub async fn download_and_merge(
     // Sort by segment ID to ensure correct order.
     results.sort_by_key(|r| r.id);
 
-    // Merge sorted segments into the output file.
-    merge_segments(&results, output_path).await?;
-
-    Ok(())
+    // Merge sorted segments into the output file, then remove the entire temp dir.
+    let merge_result = merge_segments(&results, output_path).await;
+    let _ = tokio::fs::remove_dir_all(temp_dir).await;
+    merge_result
 }
 
 /// Download a single segment with retry and exponential backoff.
@@ -176,8 +184,8 @@ async fn download_segment(
 
 /// Merge sorted segment files into a single output file.
 ///
-/// Each segment file is read sequentially and appended to the output.
-/// After successful merging, all temporary segment files are deleted.
+/// Segment cleanup is handled by the caller, which removes the entire temp
+/// directory after this function returns.
 async fn merge_segments(segments: &[SegmentResult], output_path: &Path) -> Result<()> {
     let mut output_file = tokio::fs::File::create(output_path)
         .await
@@ -199,20 +207,16 @@ async fn merge_segments(segments: &[SegmentResult], output_path: &Path) -> Resul
         .await
         .map_err(|e| anyhow!("Failed to flush output file: {e}"))?;
 
-    drop(output_file);
-
-    // Clean up temporary segment files.
-    for seg in segments {
-        if let Err(e) = tokio::fs::remove_file(&seg.path).await {
-            // Log but do not fail on cleanup errors.
-            eprintln!(
-                "Warning: failed to delete temp segment file {}: {e}",
-                seg.path.display()
-            );
-        }
-    }
-
     Ok(())
+}
+
+/// Parse segment ID from a URL's filename.
+///
+/// Extracts the filename portion of the URL (the last path component before any
+/// Generate a short random hex string for temp directory names.
+fn unique_id() -> String {
+    let n: u64 = rand::rng().random();
+    format!("{n:016x}")
 }
 
 /// Parse segment ID from a URL's filename.

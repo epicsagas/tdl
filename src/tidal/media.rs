@@ -601,7 +601,7 @@ impl Track {
 }
 
 impl Album {
-    /// Return a comma-separated list of artists whose role is "MAIN".
+    /// Return a comma-separated list of all MAIN artists (used for metadata tags).
     pub fn album_artist(&self) -> String {
         if let Some(artists) = &self.artists {
             let main: Vec<&str> = artists
@@ -614,6 +614,24 @@ impl Album {
             }
         }
         // Fallback to the single artist field.
+        self.artist
+            .as_ref()
+            .map(|a| a.name.clone())
+            .unwrap_or_default()
+    }
+
+    /// Return only the first MAIN artist, used for folder/path construction.
+    ///
+    /// Multi-artist albums (e.g. "Michael Jackson, Pitbull") would otherwise
+    /// produce different folder names for every featured-artist variant.
+    pub fn primary_artist(&self) -> String {
+        if let Some(artists) = &self.artists
+            && let Some(first) = artists
+                .iter()
+                .find(|a| a.role.as_deref() == Some("MAIN"))
+        {
+            return first.name.clone();
+        }
         self.artist
             .as_ref()
             .map(|a| a.name.clone())

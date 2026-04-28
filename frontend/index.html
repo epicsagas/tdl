@@ -71,10 +71,10 @@
     --text:#c0caf5; --text2:#565f89; --border:#292e42;
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; height:100vh; }
+body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; height:100vh; display:flex; flex-direction:column; }
 
 /* Layout */
-#app { display:flex; height:calc(100vh - 36px); }
+#app { display:flex; flex:1; min-height:0; }
 
 /* Sidebar */
 #sidebar {
@@ -153,6 +153,21 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .queue-item.cancelled .q-fill { background:var(--text2); width:100%!important; }
 .q-cancel { background:none; border:none; color:var(--text2); cursor:pointer; font-size:13px; padding:0 2px; line-height:1; float:right; }
 .q-cancel:hover { color:var(--error); }
+.q-tracks { margin-top:4px; max-height:180px; overflow-y:auto; }
+.qt-row { display:flex; align-items:center; gap:4px; padding:1px 0; font-size:11px; color:var(--text2); white-space:nowrap; overflow:hidden; }
+.qt-row .qt-icon { flex-shrink:0; width:14px; text-align:center; }
+.qt-row .qt-title { overflow:hidden; text-overflow:ellipsis; }
+.qt-row.qt-active { color:var(--accent); }
+.qt-row.qt-ok { color:var(--success); }
+.qt-row.qt-error { color:var(--error); }
+
+/* Toast */
+#toast-container { position:fixed; bottom:100px; left:50%; transform:translateX(-50%); z-index:9999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+.toast { padding:8px 16px; border-radius:6px; font-size:12px; color:#fff; opacity:0; transition:opacity .2s; pointer-events:none; max-width:360px; text-align:center; }
+.toast.show { opacity:1; }
+.toast.info { background:var(--accent); }
+.toast.warn { background:#c0831a; }
+.toast.error { background:var(--error); }
 
 /* Status bar */
 #statusbar {
@@ -170,6 +185,33 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
     background:var(--bg3); color:var(--accent); border:1px solid var(--border);
     letter-spacing:.4px;
 }
+
+/* --- Player bar --- */
+#player-bar {
+    height:64px; background:var(--bg2); border-top:1px solid var(--border);
+    display:none; align-items:center; gap:0; padding:0 16px; flex-shrink:0;
+    overflow:hidden;
+}
+#player-bar.active { display:flex; }
+#player-cover { width:44px; height:44px; border-radius:3px; object-fit:cover; background:var(--bg3); flex-shrink:0; margin-right:10px; }
+#player-info { width:200px; min-width:0; flex-shrink:0; margin-right:16px; overflow:hidden; }
+#player-title { font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#player-artist { font-size:11px; color:var(--text2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+#player-controls { display:flex; align-items:center; gap:2px; flex-shrink:0; margin-right:12px; }
+.p-btn { background:none; border:none; color:var(--text); cursor:pointer; padding:4px 6px; border-radius:4px; font-size:16px; line-height:1; }
+.p-btn:hover { color:var(--accent); background:var(--bg3); }
+.p-btn.p-play { font-size:20px; }
+#player-seek-wrap { flex:1; min-width:0; display:flex; align-items:center; gap:8px; margin-right:12px; }
+#player-seek { flex:1; min-width:0; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px; background:var(--bg3); cursor:pointer; }
+#player-seek::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:var(--accent); cursor:pointer; }
+#player-time { font-size:11px; color:var(--text2); white-space:nowrap; width:80px; flex-shrink:0; text-align:center; }
+#player-vol-wrap { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+#player-vol { width:70px; -webkit-appearance:none; appearance:none; height:3px; border-radius:2px; background:var(--bg3); cursor:pointer; }
+#player-vol::-webkit-slider-thumb { -webkit-appearance:none; width:10px; height:10px; border-radius:50%; background:var(--text2); cursor:pointer; }
+.track-row-play { cursor:pointer; }
+.track-row-play:hover td { background:var(--bg3) !important; }
+td.td-play-icon { width:20px; color:var(--text2); font-size:11px; text-align:center; }
+tr.playing td { color:var(--accent) !important; }
 
 /* --- Download page --- */
 .dl-input-row { display:flex; gap:8px; flex:1; }
@@ -242,14 +284,28 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .nav-link:hover { color:var(--accent); text-decoration:underline; }
 
 /* Multi-select toolbar */
-.sel-toolbar {
-    display:none; align-items:center; gap:10px;
-    padding:8px 16px; background:rgba(0,210,255,.08);
-    border-bottom:1px solid var(--border); font-size:12px;
-    position:sticky; top:0; z-index:10;
-}
-.sel-toolbar.visible { display:flex; }
+.sel-toolbar { display:none; }
 .sel-count { color:var(--accent); font-weight:600; }
+/* selection status row inside thead */
+.sel-header-row { display:none; }
+.sel-header-row.visible { display:table-row; }
+.sel-header-row td {
+    padding:5px 16px; background:rgba(0,210,255,.08);
+    border-bottom:1px solid var(--border); font-size:12px;
+    position:sticky; top:33px; z-index:9;
+}
+/* context menu */
+#ctx-menu {
+    position:fixed; z-index:20000; min-width:160px;
+    background:var(--bg2); border:1px solid var(--border);
+    border-radius:6px; box-shadow:0 4px 16px rgba(0,0,0,.4);
+    padding:4px 0; font-size:12px; display:none;
+}
+#ctx-menu .ctx-item {
+    padding:7px 16px; cursor:pointer; white-space:nowrap; color:var(--text);
+}
+#ctx-menu .ctx-item:hover { background:var(--bg3); color:var(--accent); }
+#ctx-menu .ctx-sep { height:1px; background:var(--border); margin:4px 0; }
 
 /* Album grid */
 .album-grid {
@@ -425,6 +481,27 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 </style>
 </head>
 <body>
+<div id="toast-container"></div>
+
+<div id="ctx-menu">
+    <div class="ctx-item" id="ctx-play" data-i18n="ctx.play">▶ Play</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-dl" data-i18n="ctx.dl">Download</div>
+    <div class="ctx-item" id="ctx-dl-sel" data-i18n="ctx.dlSel">Download Selected</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-copy" data-i18n="ctx.copyUrl">Copy URL</div>
+</div>
+
+<div id="confirm-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10000;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:24px;min-width:300px;max-width:420px;display:flex;flex-direction:column;gap:12px;">
+        <div id="confirm-title" style="font-size:14px;font-weight:600;"></div>
+        <div id="confirm-msg" style="font-size:12px;color:var(--text2);white-space:pre-line;line-height:1.6;"></div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:4px;">
+            <button id="confirm-cancel" class="btn btn-sm btn-ghost"></button>
+            <button id="confirm-ok" class="btn btn-sm"></button>
+        </div>
+    </div>
+</div>
 
 <!-- OAuth Login URL modal -->
 <div id="login-modal-overlay">
@@ -599,6 +676,31 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 </aside>
 </div>
 
+<div id="player-bar">
+    <img id="player-cover" src="" alt="">
+    <div id="player-info">
+        <div id="player-title">—</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+            <span id="player-artist" style="font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span>
+            <span id="player-audio-info" style="font-size:10px;color:var(--text2);opacity:.7;white-space:nowrap;flex-shrink:0;"></span>
+        </div>
+    </div>
+    <div id="player-controls">
+        <button class="p-btn" id="p-prev" title="Previous" onclick="playerPrev()">&#9664;&#9664;</button>
+        <button class="p-btn p-play" id="p-play" title="Play/Pause" onclick="playerToggle()">&#9654;</button>
+        <button class="p-btn" id="p-next" title="Next" onclick="playerNext()">&#9654;&#9654;</button>
+    </div>
+    <div id="player-seek-wrap">
+        <span id="player-time">0:00 / 0:00</span>
+        <input type="range" id="player-seek" min="0" max="100" value="0" step="0.1">
+    </div>
+    <div id="player-vol-wrap">
+        <button class="p-btn" id="p-mute" title="Mute" onclick="playerMute()">&#128266;</button>
+        <input type="range" id="player-vol" min="0" max="1" step="0.02" value="0.8">
+    </div>
+</div>
+<audio id="player-audio"></audio>
+
 <div id="statusbar">
     <span class="dot" id="status-dot"></span>
     <span id="status-text">Ready</span>
@@ -664,6 +766,206 @@ document.querySelectorAll('[data-filter]').forEach(btn => {
 });
 
 function setStatus(msg) { document.getElementById('status-text').textContent = msg; }
+
+// ---- Player ----
+const audio = document.getElementById('player-audio');
+let playerQueue = [];
+let playerIdx = -1;
+let playerGen = 0; // incremented on every playerPlayAt call; guards stale downloads
+
+async function playerLoadQueue(tracks, startIdx) {
+    // Check which tracks are missing and ask user once before starting
+    const missing = [];
+    for (let i = 0; i < tracks.length; i++) {
+        if (i === startIdx) continue; // check later inline
+        let p = null;
+        try { p = await invoke('get_track_local_path', { trackId: tracks[i].id }); } catch(_) {}
+        if (!p) missing.push(i);
+    }
+
+    playerQueue = tracks;
+
+    if (missing.length > 0) {
+        const dlAll = await showConfirm(
+            t('confirm.missingTitle').replace('{n}', missing.length),
+            t('confirm.missingMsg'),
+            t('confirm.download'), t('confirm.thisTrackOnly')
+        );
+        if (dlAll) {
+            // kick off background downloads for missing tracks (don't await)
+            missing.forEach(i => {
+                const t2 = tracks[i];
+                const url = `https://tidal.com/browse/track/${t2.id}`;
+                const name = `${artistName(t2)} - ${trackTitle(t2)}`;
+                const qid = addToQueue(url, name);
+                invoke('download_url', { url, queueId: qid }).catch(() => {});
+            });
+        }
+    }
+
+    await playerPlayAt(startIdx);
+}
+
+async function playerPlayAt(idx) {
+    if (idx < 0 || idx >= playerQueue.length) return;
+    playerIdx = idx;
+    const gen = ++playerGen; // capture this request's generation
+    const t = playerQueue[idx];
+    const trackId = t.id;
+
+    document.querySelectorAll('tr.playing').forEach(r => r.classList.remove('playing'));
+    document.querySelectorAll(`tr[data-id="${trackId}"]`).forEach(r => r.classList.add('playing'));
+
+    let path = null;
+    try { path = await invoke('get_track_local_path', { trackId }); } catch(_) {}
+
+    // another track was requested while we were awaiting — abort
+    if (playerGen !== gen) return;
+
+    if (path) {
+        const assetUrl = window.__TAURI__?.core?.convertFileSrc
+            ? window.__TAURI__.core.convertFileSrc(path)
+            : `asset://localhost/${encodeURIComponent(path).replace(/%2F/g,'/')}`;
+        playerSetSrc(assetUrl, t);
+    } else {
+        const trackUrl = `https://tidal.com/browse/track/${trackId}`;
+        const name = `${artistName(t)} - ${trackTitle(t)}`;
+
+        // show pending state immediately
+        const bar = document.getElementById('player-bar');
+        bar.classList.add('active');
+        document.getElementById('player-title').textContent = trackTitle(t);
+        document.getElementById('player-artist').textContent = artistName(t);
+        document.getElementById('player-audio-info').textContent = t('player.downloading');
+        const cover = t.album?.cover || t.cover;
+        const coverEl = document.getElementById('player-cover');
+        if (cover) coverEl.src = coverUrl(cover, 80); else coverEl.src = '';
+        document.getElementById('p-play').innerHTML = '&#9654;';
+
+        const qid = addToQueue(trackUrl, name);
+        try {
+            await invoke('download_url', { url: trackUrl, queueId: qid });
+
+            // superseded by a newer play request while downloading — stop here
+            if (playerGen !== gen) return;
+
+            let p2 = null;
+            try { p2 = await invoke('get_track_local_path', { trackId }); } catch(_) {}
+
+            if (playerGen !== gen) return;
+
+            if (p2) {
+                const assetUrl2 = window.__TAURI__?.core?.convertFileSrc
+                    ? window.__TAURI__.core.convertFileSrc(p2)
+                    : `asset://localhost/${encodeURIComponent(p2).replace(/%2F/g,'/')}`;
+                playerSetSrc(assetUrl2, t);
+            } else {
+                document.getElementById('player-audio-info').textContent = t('player.playFailed');
+                showToast(t('toast.fileNotFound'), 'error');
+            }
+        } catch(e) {
+            if (playerGen !== gen) return;
+            document.getElementById('player-audio-info').textContent = t('player.dlFailed');
+            showToast(t('toast.dlFailed').replace('{e}', e), 'error');
+        }
+    }
+}
+
+// Returns true if user clicked confirmLabel, false for cancelLabel
+function showConfirm(title, message, confirmLabel, cancelLabel) {
+    return new Promise(resolve => {
+        const overlay = document.getElementById('confirm-overlay');
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-msg').textContent = message;
+        document.getElementById('confirm-ok').textContent = confirmLabel;
+        document.getElementById('confirm-cancel').textContent = cancelLabel;
+        overlay.style.display = 'flex';
+        const ok = document.getElementById('confirm-ok');
+        const cancel = document.getElementById('confirm-cancel');
+        const cleanup = () => { overlay.style.display = 'none'; ok.onclick = null; cancel.onclick = null; };
+        ok.onclick = () => { cleanup(); resolve(true); };
+        cancel.onclick = () => { cleanup(); resolve(false); };
+    });
+}
+
+function playerSetSrc(src, t) {
+    audio.src = src;
+    audio.load();
+    audio.volume = document.getElementById('player-vol').value;
+    audio.play().catch(() => {});
+
+    const bar = document.getElementById('player-bar');
+    bar.classList.add('active');
+    document.getElementById('player-title').textContent = trackTitle(t);
+    document.getElementById('player-artist').textContent = artistName(t);
+    document.getElementById('player-audio-info').textContent = '';
+    const cover = t.album?.cover || t.cover;
+    const coverEl = document.getElementById('player-cover');
+    if (cover) coverEl.src = coverUrl(cover, 80);
+    else coverEl.src = '';
+    document.getElementById('p-play').innerHTML = '&#9646;&#9646;';
+
+    // fetch bitdepth / samplerate asynchronously
+    invoke('get_track_audio_info', { trackId: t.id }).then(info => {
+        const parts = [];
+        if (info.codec) parts.push(info.codec.toUpperCase().replace('FLAC','FLAC').replace('AAC','AAC'));
+        if (info.sampleRate) parts.push(`${(info.sampleRate / 1000).toFixed(1)} kHz`);
+        if (info.bitDepth) parts.push(`${info.bitDepth}-bit`);
+        document.getElementById('player-audio-info').textContent = parts.join(' · ');
+    }).catch(() => {});
+}
+
+function playerToggle() {
+    if (audio.paused) { audio.play(); document.getElementById('p-play').innerHTML = '&#9646;&#9646;'; }
+    else { audio.pause(); document.getElementById('p-play').innerHTML = '&#9654;'; }
+}
+function playerPrev() {
+    if (playerIdx > 0) playerPlayAt(playerIdx - 1);
+}
+function playerNext() {
+    if (playerIdx < playerQueue.length - 1) playerPlayAt(playerIdx + 1);
+}
+function playerMute() {
+    audio.muted = !audio.muted;
+    document.getElementById('p-mute').innerHTML = audio.muted ? '&#128263;' : '&#128266;';
+}
+
+// sync seek bar
+audio.addEventListener('timeupdate', () => {
+    if (!audio.duration) return;
+    const seek = document.getElementById('player-seek');
+    seek.value = (audio.currentTime / audio.duration) * 100;
+    document.getElementById('player-time').textContent =
+        `${fmtDuration(Math.floor(audio.currentTime))} / ${fmtDuration(Math.floor(audio.duration))}`;
+});
+audio.addEventListener('ended', () => {
+    document.getElementById('p-play').innerHTML = '&#9654;';
+    playerNext();
+});
+audio.addEventListener('pause', () => { document.getElementById('p-play').innerHTML = '&#9654;'; });
+audio.addEventListener('play',  () => { document.getElementById('p-play').innerHTML = '&#9646;&#9646;'; });
+
+document.getElementById('player-seek').addEventListener('input', e => {
+    if (audio.duration) audio.currentTime = (e.target.value / 100) * audio.duration;
+});
+document.getElementById('player-vol').addEventListener('input', e => {
+    audio.volume = e.target.value;
+    audio.muted = false;
+    document.getElementById('p-mute').innerHTML = '&#128266;';
+});
+
+function showToast(msg, type = 'info', duration = 4000) {
+    const c = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    c.appendChild(el);
+    requestAnimationFrame(() => { el.classList.add('show'); });
+    setTimeout(() => {
+        el.classList.remove('show');
+        setTimeout(() => el.remove(), 250);
+    }, duration);
+}
 function fmtDuration(sec) {
     if (!sec) return '';
     const m = Math.floor(sec / 60), s = sec % 60;
@@ -704,18 +1006,18 @@ function setTrackInfo(t) {
 
     area.innerHTML = `
         ${img ? `<img src="${img}" onerror="this.style.display='none'">` : '<div class="placeholder">No cover</div>'}
-        ${title ? `<div class="cover-title">${title}</div>` : ''}
-        ${artist ? `<div class="cover-artist">${artist}</div>` : ''}
-        ${album || year ? `<div class="cover-meta">${[album, year].filter(Boolean).join(' · ')}</div>` : ''}
-        ${trk || qual || dur ? `<div class="cover-meta">${[trk ? `#${trk}` : '', qual, dur].filter(Boolean).join(' · ')}</div>` : ''}
-        ${isrc ? `<div class="cover-isrc">${isrc}</div>` : ''}
+        ${title ? `<div class="cover-title">${esc(title)}</div>` : ''}
+        ${artist ? `<div class="cover-artist">${esc(artist)}</div>` : ''}
+        ${album || year ? `<div class="cover-meta">${esc([album, year].filter(Boolean).join(' · '))}</div>` : ''}
+        ${trk || qual || dur ? `<div class="cover-meta">${esc([trk ? `#${trk}` : '', qual, dur].filter(Boolean).join(' · '))}</div>` : ''}
+        ${isrc ? `<div class="cover-isrc">${esc(isrc)}</div>` : ''}
     `;
 }
 
 // ---- Queue ----
 function addToQueue(url, name) {
     const id = Date.now().toString();
-    queue.set(id, { url, name, status: 'downloading', progress: '' });
+    queue.set(id, { url, name, status: 'downloading', progress: '', tracks: null, activeTrack: -1 });
     renderQueue();
     return id;
 }
@@ -726,29 +1028,72 @@ function updateQueue(id, status, progress) {
     if (progress !== undefined) item.progress = progress;
     renderQueue();
 }
+function setQueueTracks(id, tracks) {
+    const item = queue.get(id);
+    if (!item) return;
+    item.tracks = tracks.map(t => ({ ...t, status: 'waiting' }));
+    renderQueue();
+}
+function updateQueueTrack(id, trackIndex, status, error) {
+    const item = queue.get(id);
+    if (!item || !item.tracks) return;
+    if (trackIndex >= 0 && trackIndex < item.tracks.length) {
+        item.tracks[trackIndex].status = status;
+        if (error) item.tracks[trackIndex].error = error;
+    }
+    item.activeTrack = status === 'downloading' ? trackIndex : item.activeTrack;
+    renderQueue();
+}
 function renderQueue() {
     const list = document.getElementById('queue-list');
     const count = document.getElementById('queue-count');
     const clearBtn = document.getElementById('queue-clear-btn');
     count.textContent = queue.size;
-    list.innerHTML = '';
     const hasFinished = [...queue.values()].some(i => i.status !== 'downloading');
     if (clearBtn) clearBtn.style.display = hasFinished ? '' : 'none';
+    const parts = [];
+    const cancelIds = [];
     for (const [id, item] of queue) {
         const done = item.status !== 'downloading';
-        const pct = done ? 100 : 0;
-        const cancelBtn = !done
-            ? `<button class="q-cancel" title="Cancel" onclick="cancelDownload('${id}')">&#10005;</button>`
-            : '';
+        const cancelUid = `qc-${id}`;
+        const cancelBtn = !done ? `<button class="q-cancel" id="${cancelUid}" title="Cancel">&#10005;</button>` : '';
+        if (!done) cancelIds.push({ uid: cancelUid, id });
         const statusText = item.status === 'downloading'
-            ? (item.progress || 'Downloading...')
+            ? (item.progress || t('queue.downloading'))
             : item.status;
-        list.innerHTML += `<div class="queue-item ${item.status}">
-            <div class="q-name">${cancelBtn}${item.name}</div>
-            <div class="q-bar"><div class="q-fill" style="width:${pct}%"></div></div>
-            <div class="q-status">${statusText}</div>
-        </div>`;
+
+        let tracksHtml = '';
+        if (item.tracks && item.tracks.length > 0) {
+            const completedCount = item.tracks.filter(t => t.status === 'ok').length;
+            const errorCount = item.tracks.filter(t => t.status === 'error').length;
+            const total = item.tracks.length;
+            const pct = total > 0 ? Math.round((completedCount + errorCount) / total * 100) : 0;
+            let rows = '';
+            for (const t of item.tracks) {
+                const icon = t.status === 'ok' ? '✓' : t.status === 'error' ? '✗' : t.status === 'downloading' ? '↓' : '·';
+                const cls = t.status === 'ok' ? 'qt-ok' : t.status === 'error' ? 'qt-error' : t.status === 'downloading' ? 'qt-active' : 'qt-wait';
+                const errTip = t.error ? ` title="${esc(t.error)}"` : '';
+                rows += `<div class="qt-row ${cls}"${errTip}><span class="qt-icon">${icon}</span><span class="qt-title">${esc(t.title)}</span></div>`;
+            }
+            tracksHtml = `<div class="q-bar"><div class="q-fill" style="width:${pct}%"></div></div>
+            <div class="q-tracks">${rows}</div>
+            <div class="q-status">${t('queue.completed').replace('{done}',completedCount).replace('{total}',total)}${errorCount ? ' · ' + t('queue.errors').replace('{n}',errorCount) : ''}</div>`;
+        } else {
+            const pct = done ? 100 : 0;
+            tracksHtml = `<div class="q-bar"><div class="q-fill" style="width:${pct}%"></div></div>
+            <div class="q-status">${esc(statusText)}</div>`;
+        }
+
+        parts.push(`<div class="queue-item ${item.status}">
+            <div class="q-name">${cancelBtn}${esc(item.name)}</div>
+            ${tracksHtml}
+        </div>`);
     }
+    list.innerHTML = parts.join('');
+    cancelIds.forEach(({ uid, id }) => {
+        const btn = document.getElementById(uid);
+        if (btn) btn.addEventListener('click', () => cancelDownload(id));
+    });
 }
 
 function clearQueue() {
@@ -782,15 +1127,18 @@ async function dlUrl(url, name) {
 
     try {
         await invoke('download_url', { url, queueId: qid });
-        // status already updated via events; only update if still downloading
+        // events (download-complete / download-cancelled) already update the queue;
+        // only fall back if somehow the event was missed
         const item = queue.get(qid);
         if (item && item.status === 'downloading') {
             updateQueue(qid, 'completed');
             addDlLog(displayName, 'completed');
         }
-        setStatus('Done: ' + displayName);
     } catch (e) {
-        updateQueue(qid, 'error');
+        const item = queue.get(qid);
+        if (item && item.status === 'downloading') {
+            updateQueue(qid, 'error', String(e));
+        }
         setStatus('Error: ' + e);
         addDlLog(displayName, 'error', e);
     }
@@ -850,16 +1198,13 @@ function renderTrackTable(tracks, areaId, opts = {}) {
     if (tracks[0]?.album?.cover) setCover(trackTitle(tracks[0]), artistName(tracks[0]), tracks[0].album.cover);
 
     const uid = areaId.replace(/[^a-z]/gi, '');
+    const colspan = 10;
 
     let html = `
-    <div class="sel-toolbar" id="${uid}-sel-toolbar">
-        <span class="sel-count" id="${uid}-sel-count">0 selected</span>
-        <button class="btn btn-sm" onclick="downloadSelected('${uid}')">Download Selected</button>
-        <button class="btn btn-sm" onclick="clearSelection('${uid}')">Clear</button>
-    </div>
     <table class="track-table" id="${uid}-table">
-    <thead><tr>
-        <th class="col-chk"><input type="checkbox" id="${uid}-chk-all" onclick="toggleAllTracks('${uid}',this.checked)"></th>
+    <thead>
+      <tr>
+        <th class="col-chk"><input type="checkbox" id="${uid}-chk-all"></th>
         <th class="col-num">#</th>
         <th>Title</th>
         <th>Artist</th>
@@ -869,7 +1214,15 @@ function renderTrackTable(tracks, areaId, opts = {}) {
         <th class="col-isrc">ISRC</th>
         <th class="col-dur">Duration</th>
         <th class="col-act"></th>
-    </tr></thead><tbody>`;
+      </tr>
+      <tr class="sel-header-row" id="${uid}-sel-row">
+        <td colspan="${colspan}">
+          <span class="sel-count" id="${uid}-sel-count">0 selected</span>
+          <button class="btn btn-sm" id="${uid}-dl-sel-btn" style="margin-left:12px">Download Selected</button>
+          <button class="btn btn-sm btn-ghost" id="${uid}-clr-btn" style="margin-left:6px">Clear</button>
+        </td>
+      </tr>
+    </thead><tbody>`;
 
     tracks.forEach((t, i) => {
         const album = t.album || {};
@@ -883,7 +1236,7 @@ function renderTrackTable(tracks, areaId, opts = {}) {
         const albumDisp = esc(album.name || '');
         const titleDisp = esc(trackTitle(t));
         const trackUrl = `https://tidal.com/browse/track/${t.id}`;
-        const dlName = esc(artistName(t) + ' - ' + trackTitle(t));
+        const rawName = artistName(t) + ' - ' + trackTitle(t);
 
         const artistCell = artistId
             ? `<span class="nav-link" data-artist-id="${artistId}" data-area="${esc(areaId)}">${artistDisp}</span>`
@@ -892,8 +1245,8 @@ function renderTrackTable(tracks, areaId, opts = {}) {
             ? `<span class="nav-link" data-album-id="${album.id}" data-area="${esc(areaId)}">${albumDisp}</span>`
             : albumDisp;
 
-        html += `<tr data-id="${t.id}" data-url="${trackUrl}" data-name="${dlName}" onclick="rowClick(event,'${uid}',this)">
-            <td class="col-chk" onclick="event.stopPropagation()"><input type="checkbox" class="${uid}-row-chk" onchange="onRowCheck('${uid}')" data-idx="${i}"></td>
+        html += `<tr data-id="${t.id}" data-idx="${i}" data-url="${esc(trackUrl)}" data-name="${esc(rawName)}">
+            <td class="col-chk"><input type="checkbox" class="${uid}-row-chk" data-idx="${i}"></td>
             <td class="col-num">${i + 1}</td>
             <td>${titleDisp}</td>
             <td class="col-artist">${artistCell}</td>
@@ -902,35 +1255,113 @@ function renderTrackTable(tracks, areaId, opts = {}) {
             <td class="col-qual">${esc(qual)}</td>
             <td class="col-isrc">${isrc}</td>
             <td class="col-dur">${esc(fmtDuration(t.duration))}</td>
-            <td class="col-act"><button class="dl-btn" data-url="${trackUrl}" data-name="${dlName}">DL</button></td>
+            <td class="col-act"><button class="dl-btn" data-url="${esc(trackUrl)}" data-name="${esc(rawName)}">DL</button></td>
         </tr>`;
     });
     html += '</tbody></table>';
     area.innerHTML = (area.innerHTML || '') + html;
     window[uid + '_tracks'] = tracks;
 
-    // Wire nav-link clicks via event delegation (avoids inline JS with user data)
     const table = document.getElementById(`${uid}-table`);
-    if (table) {
-        table.addEventListener('click', e => {
-            const link = e.target.closest('.nav-link');
-            if (!link) return;
+    if (!table) return;
+
+    // ── all-checkbox ──
+    const allChk = document.getElementById(`${uid}-chk-all`);
+    allChk.addEventListener('click', () => {
+        toggleAllTracks(uid, allChk.checked);
+    });
+
+    // ── selection header buttons ──
+    document.getElementById(`${uid}-dl-sel-btn`).addEventListener('click', () => downloadSelected(uid));
+    document.getElementById(`${uid}-clr-btn`).addEventListener('click', () => clearSelection(uid));
+
+    // ── row checkboxes via delegation ──
+    table.addEventListener('change', e => {
+        if (e.target.matches(`.${uid}-row-chk`)) onRowCheck(uid);
+    });
+
+    // ── single click: checkbox toggle + sidebar info (ignore nav-link / button / checkbox) ──
+    table.addEventListener('click', e => {
+        const link = e.target.closest('.nav-link');
+        if (link) {
             e.stopPropagation();
             const aId = link.dataset.area;
-            if (link.dataset.artistId) {
-                browseArtist(Number(link.dataset.artistId), link.textContent, aId);
-            } else if (link.dataset.albumId) {
-                browseAlbumInArea(Number(link.dataset.albumId), link.textContent, aId);
-            }
-        });
-        table.querySelectorAll('.dl-btn').forEach(btn => {
-            btn.addEventListener('click', e => {
-                e.stopPropagation();
-                dlUrl(btn.dataset.url, btn.dataset.name);
-            });
-        });
-    }
+            if (link.dataset.artistId) browseArtist(Number(link.dataset.artistId), link.textContent, aId);
+            else if (link.dataset.albumId) browseAlbumInArea(Number(link.dataset.albumId), link.textContent, aId);
+            return;
+        }
+        const dlBtn = e.target.closest('.dl-btn');
+        if (dlBtn) { e.stopPropagation(); dlUrl(dlBtn.dataset.url, dlBtn.dataset.name); return; }
+        if (e.target.matches('input[type=checkbox]')) return;
+
+        const row = e.target.closest('tr[data-id]');
+        if (!row) return;
+        const chk = row.querySelector('input[type=checkbox]');
+        chk.checked = !chk.checked;
+        onRowCheck(uid);
+        const idx = parseInt(row.dataset.idx);
+        if (tracks[idx]) setTrackInfo(tracks[idx]);
+    });
+
+    // ── double-click: play (debounced, 300 ms guard) ──
+    let dblGuard = false;
+    table.addEventListener('dblclick', e => {
+        if (e.target.matches('input,button,.nav-link') || e.target.closest('.nav-link,.dl-btn')) return;
+        const row = e.target.closest('tr[data-id]');
+        if (!row || dblGuard) return;
+        dblGuard = true;
+        setTimeout(() => { dblGuard = false; }, 300);
+        const idx = parseInt(row.dataset.idx);
+        if (idx >= 0) playerLoadQueue(tracks, idx);
+    });
+
+    // ── right-click context menu ──
+    table.addEventListener('contextmenu', e => {
+        const row = e.target.closest('tr[data-id]');
+        if (!row) return;
+        e.preventDefault();
+
+        const idx = parseInt(row.dataset.idx);
+        const trackUrl = row.dataset.url;
+        const rawName = row.dataset.name;
+        const selectedRows = [...table.querySelectorAll(`.${uid}-row-chk:checked`)]
+            .map(c => c.closest('tr[data-id]')).filter(Boolean);
+
+        const menu = document.getElementById('ctx-menu');
+        document.getElementById('ctx-play').onclick = () => {
+            hideCtxMenu();
+            playerLoadQueue(tracks, idx);
+        };
+        document.getElementById('ctx-dl').onclick = () => {
+            hideCtxMenu();
+            dlUrl(trackUrl, rawName);
+        };
+        const dlSelItem = document.getElementById('ctx-dl-sel');
+        if (selectedRows.length > 1) {
+            dlSelItem.style.display = '';
+            dlSelItem.textContent = t('ctx.dlSelCount').replace('{n}', selectedRows.length);
+            dlSelItem.onclick = () => { hideCtxMenu(); downloadSelected(uid); };
+        } else {
+            dlSelItem.style.display = 'none';
+        }
+        document.getElementById('ctx-copy').onclick = () => {
+            hideCtxMenu();
+            navigator.clipboard.writeText(trackUrl).then(() => showToast(t('toast.urlCopied'), 'info', 1500));
+        };
+
+        // position
+        menu.style.display = 'block';
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        const x = Math.min(e.clientX, window.innerWidth  - mw - 4);
+        const y = Math.min(e.clientY, window.innerHeight - mh - 4);
+        menu.style.left = x + 'px';
+        menu.style.top  = y + 'px';
+    });
 }
+
+function hideCtxMenu() { document.getElementById('ctx-menu').style.display = 'none'; }
+document.addEventListener('click',       hideCtxMenu);
+document.addEventListener('contextmenu', e => { if (!e.target.closest('#ctx-menu')) hideCtxMenu(); }, true);
 
 function fmtQuality(q) {
     if (!q) return '';
@@ -943,30 +1374,13 @@ function fmtQuality(q) {
     }
 }
 
-function rowClick(e, uid, row) {
-    if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
-    const chk = row.querySelector('input[type=checkbox]');
-    chk.checked = !chk.checked;
-    onRowCheck(uid);
-    // update sidebar with this track's info
-    const idx = parseInt(chk.dataset.idx);
-    const tracks = window[uid + '_tracks'];
-    if (tracks?.[idx]) setTrackInfo(tracks[idx]);
-}
-
 function onRowCheck(uid) {
     const checkboxes = document.querySelectorAll(`.${uid}-row-chk`);
     const selected = [...checkboxes].filter(c => c.checked);
-    const toolbar = document.getElementById(`${uid}-sel-toolbar`);
-    const visible = selected.length > 0;
-    if (toolbar) {
-        toolbar.classList.toggle('visible', visible);
-        // push thead down so it sits below the sticky toolbar
-        const h = visible ? (toolbar.offsetHeight || 37) + 'px' : '0px';
-        document.documentElement.style.setProperty('--thead-top', h);
-    }
+    const selRow = document.getElementById(`${uid}-sel-row`);
+    if (selRow) selRow.classList.toggle('visible', selected.length > 0);
     const countEl = document.getElementById(`${uid}-sel-count`);
-    if (countEl) countEl.textContent = `${selected.length} selected`;
+    if (countEl) countEl.textContent = t('sel.count').replace('{n}', selected.length);
     const allChk = document.getElementById(`${uid}-chk-all`);
     if (allChk) {
         allChk.indeterminate = selected.length > 0 && selected.length < checkboxes.length;
@@ -983,17 +1397,14 @@ function clearSelection(uid) {
     document.querySelectorAll(`.${uid}-row-chk`).forEach(c => c.checked = false);
     const allChk = document.getElementById(`${uid}-chk-all`);
     if (allChk) { allChk.checked = false; allChk.indeterminate = false; }
-    const toolbar = document.getElementById(`${uid}-sel-toolbar`);
-    if (toolbar) toolbar.classList.remove('visible');
+    const selRow = document.getElementById(`${uid}-sel-row`);
+    if (selRow) selRow.classList.remove('visible');
 }
 
 function downloadSelected(uid) {
-    const rows = document.querySelectorAll(`#${uid}-table tbody tr`);
-    rows.forEach(row => {
+    document.querySelectorAll(`#${uid}-table tbody tr`).forEach(row => {
         const chk = row.querySelector('input[type=checkbox]');
-        if (chk?.checked) {
-            dlUrl(row.dataset.url, row.dataset.name);
-        }
+        if (chk?.checked) dlUrl(row.dataset.url, row.dataset.name);
     });
     clearSelection(uid);
 }
@@ -1003,25 +1414,32 @@ function renderSearchTracks(tracks) {
     renderTrackTable(tracks, 'search-results', { emptyMsg: 'No tracks found' });
 }
 
-function albumCardHtml(a, onClickExpr, dlExpr) {
+function albumCardHtml(a, onClickFn, dlFn) {
     const img = coverUrl(a.cover, 320);
     const artist = a.artist?.name || a.artists?.find(ar => ar.role === 'MAIN')?.name || a.artists?.[0]?.name || '';
     const year = a.releaseDate ? a.releaseDate.slice(0, 4) : (a.streamStartDate ? a.streamStartDate.slice(0, 4) : '');
     const numTracks = a.numTracks != null ? a.numTracks + ' tracks' : '';
     const type = a.type ? fmtAlbumType(a.type) : '';
-    const safeName = (a.name || '').replace(/'/g, "\\'");
-    return `<div class="album-card" onclick="${onClickExpr}">
+    const uid = `ac-${a.id}`;
+    const dlUid = `acdl-${a.id}`;
+    setTimeout(() => {
+        const card = document.getElementById(uid);
+        if (card) card.addEventListener('click', onClickFn);
+        const dlBtn = document.getElementById(dlUid);
+        if (dlBtn) dlBtn.addEventListener('click', e => { e.stopPropagation(); dlFn(); });
+    }, 0);
+    return `<div class="album-card" id="${uid}">
         <div class="card-img-wrap">
             ${img ? `<img src="${img}" loading="lazy" onerror="this.style.display='none'">` : '<div style="width:100%;aspect-ratio:1;background:var(--bg3)"></div>'}
-            <div class="card-dl-overlay"><button onclick="event.stopPropagation();${dlExpr}">Download</button></div>
+            <div class="card-dl-overlay"><button id="${dlUid}">Download</button></div>
         </div>
         <div class="card-info">
-            <div class="card-title">${a.name || ''}</div>
-            <div class="card-artist">${artist}</div>
+            <div class="card-title">${esc(a.name || '')}</div>
+            <div class="card-artist">${esc(artist)}</div>
             <div class="card-meta">
-                ${year ? `<span>${year}</span>` : ''}
-                ${numTracks ? `<span>${numTracks}</span>` : ''}
-                ${type ? `<span class="card-badge">${type}</span>` : ''}
+                ${year ? `<span>${esc(year)}</span>` : ''}
+                ${numTracks ? `<span>${esc(numTracks)}</span>` : ''}
+                ${type ? `<span class="card-badge">${esc(type)}</span>` : ''}
             </div>
         </div>
     </div>`;
@@ -1042,10 +1460,9 @@ function renderSearchAlbums(albums) {
     if (!albums.length) { area.innerHTML = '<div class="empty">No albums found</div>'; return; }
     let html = '<div class="album-grid">';
     albums.forEach(a => {
-        const safeName = (a.name || '').replace(/'/g, "\\'");
         html += albumCardHtml(a,
-            `browseAlbum(${a.id},'${safeName}')`,
-            `dlUrl('https://tidal.com/browse/album/${a.id}','${safeName}')`
+            () => browseAlbum(a.id, a.name || ''),
+            () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
         );
     });
     html += '</div>';
@@ -1059,25 +1476,43 @@ function renderSearchPlaylists(playlists) {
     playlists.forEach(p => {
         const id = p.uuid || p.id || '';
         const count = p.numTracks || 0;
-        html += `<div class="pl-item" onclick="browsePlaylist('${id}','${(p.name||'').replace(/'/g,"\\'")}')">
+        const uid = `pl-${id}`;
+        const dlUid = `pldl-${id}`;
+        html += `<div class="pl-item" id="${uid}">
             <div class="pl-icon">&#9835;</div>
             <div class="pl-info">
-                <div class="pl-name">${p.name || 'Untitled'}</div>
+                <div class="pl-name">${esc(p.name || 'Untitled')}</div>
                 <div class="pl-count">${count} tracks</div>
             </div>
-            <div class="pl-dl"><button class="dl-btn" onclick="event.stopPropagation();dlUrl('https://tidal.com/browse/playlist/${id}','${(p.name||'Playlist').replace(/'/g,"\\'")}')">DL All</button></div>
+            <div class="pl-dl"><button class="dl-btn" id="${dlUid}">DL All</button></div>
         </div>`;
+        setTimeout(() => {
+            const el = document.getElementById(uid);
+            if (el) el.addEventListener('click', () => browsePlaylist(id, p.name || ''));
+            const dlBtn = document.getElementById(dlUid);
+            if (dlBtn) dlBtn.addEventListener('click', e => {
+                e.stopPropagation();
+                dlUrl(`https://tidal.com/browse/playlist/${id}`, p.name || 'Playlist');
+            });
+        }, 0);
     });
     area.innerHTML = html;
 }
 
 // ---- Browse album/playlist ----
-function browseHeader(label, dlUrl, dlName, backFn) {
-    const safeBack = backFn ? `onclick="${backFn}"` : '';
+function browseHeader(label, targetUrl, dlName, backFn) {
+    const uid = `bh-${Date.now()}`;
+    const backUid = `bh-back-${Date.now()}`;
+    setTimeout(() => {
+        const dlBtn = document.getElementById(uid);
+        if (dlBtn) dlBtn.addEventListener('click', () => dlUrl(targetUrl, dlName));
+        const backBtn = document.getElementById(backUid);
+        if (backBtn && backFn) backBtn.addEventListener('click', new Function(backFn));
+    }, 0);
     return `<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-shrink:0">
-        ${backFn ? `<button class="btn btn-sm" ${safeBack}>&larr;</button>` : ''}
-        <strong style="flex:1;font-size:13px">${label}</strong>
-        <button class="btn btn-sm" onclick="dlUrl('${dlUrl}','${dlName.replace(/'/g,"\\'")}')">Download All</button>
+        ${backFn ? `<button class="btn btn-sm" id="${backUid}">&larr;</button>` : ''}
+        <strong style="flex:1;font-size:13px">${esc(label)}</strong>
+        <button class="btn btn-sm" id="${uid}">Download All</button>
     </div>`;
 }
 
@@ -1094,7 +1529,13 @@ async function browseAlbumInArea(albumId, name, areaId) {
         area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, backFn);
         renderTrackTable(tracks, areaId, { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
+        const msg = String(e);
+        const isGone = msg.includes('404') || msg.includes('2001') || msg.includes('not found');
+        if (isGone) {
+            area.innerHTML = `<div class="empty error-msg">앨범을 사용할 수 없습니다.<br><span style="color:var(--text2);font-size:11px">삭제되었거나 해당 지역에서 제공되지 않는 앨범입니다.</span></div>`;
+        } else {
+            area.innerHTML = `<div class="empty error-msg">Failed: ${esc(msg)}</div>`;
+        }
     }
 }
 
@@ -1108,14 +1549,10 @@ async function browseArtist(artistId, name, areaId) {
         if (!albums.length) { area.innerHTML += '<div class="empty">No albums found</div>'; return; }
         let grid = '<div class="album-grid">';
         albums.forEach(a => {
-            const aName = a.name || '';
-            const safeAreaId = areaId;
-            const cover = a.cover ? coverUrl(a.cover, 160) : '';
-            const year = a.releaseYear || a.release_year || '';
-            grid += `<div class="album-card" onclick="browseAlbumInArea(${a.id},'${aName.replace(/'/g,"\\'")}','${safeAreaId}')">
-                ${cover ? `<img src="${cover}" alt="${aName}" loading="lazy">` : '<div class="no-cover"></div>'}
-                <div class="album-info"><div class="album-name">${aName}</div><div class="album-year">${year}</div></div>
-            </div>`;
+            grid += albumCardHtml(a,
+                () => browseAlbumInArea(a.id, a.name || '', areaId),
+                () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
+            );
         });
         grid += '</div>';
         area.innerHTML += grid;
@@ -1149,6 +1586,8 @@ async function loadFav(type) {
     document.querySelectorAll('[data-fav]').forEach(b => {
         b.classList.toggle('active', b.dataset.fav === type);
     });
+    const dlAllBtn = document.querySelector('#page-favorites .btn-sm[onclick="downloadAllFav()"]');
+    if (dlAllBtn) dlAllBtn.style.display = '';
     const area = document.getElementById('fav-results');
     area.innerHTML = '<div class="loading">Loading...</div>';
     try {
@@ -1174,10 +1613,9 @@ function renderFavAlbums(albums) {
     if (!albums.length) { area.innerHTML = '<div class="empty">No favorite albums</div>'; return; }
     let html = '<div class="album-grid">';
     albums.forEach(a => {
-        const safeName = (a.name || '').replace(/'/g, "\\'");
         html += albumCardHtml(a,
-            `browseFavAlbum(${a.id},'${safeName}')`,
-            `dlUrl('https://tidal.com/browse/album/${a.id}','${safeName}')`
+            () => browseFavAlbum(a.id, a.name || ''),
+            () => dlUrl(`https://tidal.com/browse/album/${a.id}`, a.name || '')
         );
     });
     html += '</div>';
@@ -1186,13 +1624,25 @@ function renderFavAlbums(albums) {
 
 async function browseFavAlbum(albumId, name) {
     const area = document.getElementById('fav-results');
+    const dlAllBtn = document.querySelector('#page-favorites .btn-sm[onclick="downloadAllFav()"]');
     area.innerHTML = '<div class="loading">Loading tracks...</div>';
+    if (dlAllBtn) dlAllBtn.style.display = 'none';
     try {
         const tracks = await invoke('get_album_tracks', { albumId });
-        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'tracks\')');
+        area.innerHTML = browseHeader(name, `https://tidal.com/browse/album/${albumId}`, name, 'loadFav(\'albums\')');
         renderTrackTable(tracks, 'fav-results', { emptyMsg: 'No tracks' });
     } catch (e) {
-        area.innerHTML = `<div class="empty error-msg">Failed: ${esc(e)}</div>`;
+        const msg = String(e);
+        const isGone = msg.includes('404') || msg.includes('2001') || msg.includes('not found');
+        if (isGone) {
+            favAlbums = favAlbums.filter(a => a.id !== albumId);
+            renderFavAlbums(favAlbums);
+            if (dlAllBtn) dlAllBtn.style.display = '';
+            showToast(t('toast.albumRemoved').replace('{name}', name), 'warn');
+        } else {
+            if (dlAllBtn) dlAllBtn.style.display = '';
+            area.innerHTML = `<div class="empty error-msg">Failed: ${esc(msg)}</div>`;
+        }
     }
 }
 
@@ -1296,6 +1746,17 @@ const LOCALES = {
         'sf.extractFlac':'Extract FLAC','sf.embedLyrics':'Embed Lyrics',
         'sf.lyricsFile':'Lyrics File','sf.replayGain':'ReplayGain',
         'sf.createPlaylist':'Create Playlist','sf.playlistFormat':'Playlist Format','sf.trackPad':'Track Pad',
+        'sf.logLevel':'Log Level',
+        'ctx.play':'▶ Play','ctx.dl':'Download','ctx.dlSel':'Download Selected',
+        'ctx.dlSelCount':'Download Selected ({n})','ctx.copyUrl':'Copy URL',
+        'confirm.missingTitle':'{n} track(s) not found locally.',
+        'confirm.missingMsg':'Download the remaining tracks now?\n(Playback starts immediately while downloading)',
+        'confirm.download':'Download','confirm.thisTrackOnly':'This track only',
+        'toast.fileNotFound':'File not found after download.','toast.dlFailed':'Download failed: {e}',
+        'toast.urlCopied':'URL copied','toast.albumRemoved':'"{name}" is unavailable and has been removed.',
+        'player.downloading':'Downloading...','player.dlFailed':'Download failed','player.playFailed':'Playback unavailable',
+        'queue.downloading':'Downloading...','queue.completed':'{done}/{total} completed','queue.errors':'{n} errors',
+        'sel.count':'{n} selected',
     },
     ko: {
         _name: '한국어', _flag: '🇰🇷',
@@ -1346,6 +1807,17 @@ const LOCALES = {
         'sf.extractFlac':'FLAC 추출','sf.embedLyrics':'가사 삽입',
         'sf.lyricsFile':'가사 파일 저장','sf.replayGain':'ReplayGain',
         'sf.createPlaylist':'플레이리스트 생성','sf.playlistFormat':'플레이리스트 형식','sf.trackPad':'트랙 번호 패딩',
+        'sf.logLevel':'로그 레벨',
+        'ctx.play':'▶ 재생','ctx.dl':'다운로드','ctx.dlSel':'선택 항목 다운로드',
+        'ctx.dlSelCount':'선택 항목 다운로드 ({n}개)','ctx.copyUrl':'URL 복사',
+        'confirm.missingTitle':'{n}개 트랙이 로컬에 없습니다.',
+        'confirm.missingMsg':'나머지 트랙도 지금 다운로드하시겠습니까?\n(다운로드 중에도 재생은 바로 시작됩니다)',
+        'confirm.download':'다운로드','confirm.thisTrackOnly':'이 트랙만',
+        'toast.fileNotFound':'다운로드 완료 후 파일을 찾을 수 없습니다.','toast.dlFailed':'다운로드 실패: {e}',
+        'toast.urlCopied':'URL 복사됨','toast.albumRemoved':'"{name}" 앨범을 사용할 수 없어 목록에서 제거했습니다.',
+        'player.downloading':'다운로드 중...','player.dlFailed':'다운로드 실패','player.playFailed':'재생 불가',
+        'queue.downloading':'다운로드 중...','queue.completed':'{done}/{total} 완료','queue.errors':'{n}개 오류',
+        'sel.count':'{n}개 선택됨',
     },
     de: {
         _name: 'Deutsch', _flag: '🇩🇪',
@@ -1374,6 +1846,17 @@ const LOCALES = {
         'status.ready':'Bereit','status.loginSuccess':'Anmeldung erfolgreich','status.loginFail':'Anmeldung fehlgeschlagen',
         'status.saved':'Einstellungen gespeichert','status.saveFail':'Speichern fehlgeschlagen',
         'status.dlComplete':'Download abgeschlossen',
+        'sf.logLevel':'Log-Level',
+        'ctx.play':'▶ Abspielen','ctx.dl':'Herunterladen','ctx.dlSel':'Auswahl herunterladen',
+        'ctx.dlSelCount':'Auswahl herunterladen ({n})','ctx.copyUrl':'URL kopieren',
+        'confirm.missingTitle':'{n} Titel lokal nicht gefunden.',
+        'confirm.missingMsg':'Fehlende Titel jetzt herunterladen?\n(Wiedergabe startet sofort beim Herunterladen)',
+        'confirm.download':'Herunterladen','confirm.thisTrackOnly':'Nur diesen Titel',
+        'toast.fileNotFound':'Datei nach dem Download nicht gefunden.','toast.dlFailed':'Download fehlgeschlagen: {e}',
+        'toast.urlCopied':'URL kopiert','toast.albumRemoved':'"{name}" ist nicht verfügbar und wurde entfernt.',
+        'player.downloading':'Lädt herunter...','player.dlFailed':'Download fehlgeschlagen','player.playFailed':'Wiedergabe nicht möglich',
+        'queue.downloading':'Herunterladen...','queue.completed':'{done}/{total} abgeschlossen','queue.errors':'{n} Fehler',
+        'sel.count':'{n} ausgewählt',
     },
     fr: {
         _name: 'Français', _flag: '🇫🇷',
@@ -1402,6 +1885,17 @@ const LOCALES = {
         'status.ready':'Prêt','status.loginSuccess':'Connexion réussie','status.loginFail':'Échec de connexion',
         'status.saved':'Paramètres enregistrés','status.saveFail':'Échec de sauvegarde',
         'status.dlComplete':'Téléchargement terminé',
+        'sf.logLevel':'Niveau de log',
+        'ctx.play':'▶ Lire','ctx.dl':'Télécharger','ctx.dlSel':'Télécharger la sélection',
+        'ctx.dlSelCount':'Télécharger la sélection ({n})','ctx.copyUrl':'Copier l\'URL',
+        'confirm.missingTitle':'{n} titre(s) introuvable(s) en local.',
+        'confirm.missingMsg':'Télécharger les titres manquants maintenant ?\n(La lecture démarre immédiatement pendant le téléchargement)',
+        'confirm.download':'Télécharger','confirm.thisTrackOnly':'Ce titre seulement',
+        'toast.fileNotFound':'Fichier introuvable après téléchargement.','toast.dlFailed':'Échec du téléchargement : {e}',
+        'toast.urlCopied':'URL copiée','toast.albumRemoved':'"{name}" est indisponible et a été retiré.',
+        'player.downloading':'Téléchargement...','player.dlFailed':'Échec du téléchargement','player.playFailed':'Lecture impossible',
+        'queue.downloading':'Téléchargement...','queue.completed':'{done}/{total} terminé(s)','queue.errors':'{n} erreur(s)',
+        'sel.count':'{n} sélectionné(s)',
     },
     ja: {
         _name: '日本語', _flag: '🇯🇵',
@@ -1430,6 +1924,17 @@ const LOCALES = {
         'status.ready':'準備完了','status.loginSuccess':'ログイン成功','status.loginFail':'ログイン失敗',
         'status.saved':'設定を保存しました','status.saveFail':'保存に失敗しました',
         'status.dlComplete':'ダウンロード完了',
+        'sf.logLevel':'ログレベル',
+        'ctx.play':'▶ 再生','ctx.dl':'ダウンロード','ctx.dlSel':'選択してダウンロード',
+        'ctx.dlSelCount':'選択してダウンロード ({n})','ctx.copyUrl':'URLをコピー',
+        'confirm.missingTitle':'{n}曲がローカルにありません。',
+        'confirm.missingMsg':'残りのトラックを今すぐダウンロードしますか？\n(ダウンロード中でも再生はすぐ始まります)',
+        'confirm.download':'ダウンロード','confirm.thisTrackOnly':'このトラックのみ',
+        'toast.fileNotFound':'ダウンロード後にファイルが見つかりません。','toast.dlFailed':'ダウンロード失敗: {e}',
+        'toast.urlCopied':'URLをコピーしました','toast.albumRemoved':'"{name}"は利用できないため削除されました。',
+        'player.downloading':'ダウンロード中...','player.dlFailed':'ダウンロード失敗','player.playFailed':'再生不可',
+        'queue.downloading':'ダウンロード中...','queue.completed':'{done}/{total} 完了','queue.errors':'{n}件のエラー',
+        'sel.count':'{n}件選択中',
     },
     pt: {
         _name: 'Português', _flag: '🇧🇷',
@@ -1458,6 +1963,17 @@ const LOCALES = {
         'status.ready':'Pronto','status.loginSuccess':'Login bem-sucedido','status.loginFail':'Falha no login',
         'status.saved':'Configurações salvas','status.saveFail':'Falha ao salvar',
         'status.dlComplete':'Download concluído',
+        'sf.logLevel':'Nível de log',
+        'ctx.play':'▶ Reproduzir','ctx.dl':'Baixar','ctx.dlSel':'Baixar selecionados',
+        'ctx.dlSelCount':'Baixar selecionados ({n})','ctx.copyUrl':'Copiar URL',
+        'confirm.missingTitle':'{n} faixa(s) não encontrada(s) localmente.',
+        'confirm.missingMsg':'Baixar as faixas ausentes agora?\n(A reprodução começa imediatamente durante o download)',
+        'confirm.download':'Baixar','confirm.thisTrackOnly':'Apenas esta faixa',
+        'toast.fileNotFound':'Arquivo não encontrado após o download.','toast.dlFailed':'Falha no download: {e}',
+        'toast.urlCopied':'URL copiada','toast.albumRemoved':'"{name}" está indisponível e foi removido.',
+        'player.downloading':'Baixando...','player.dlFailed':'Falha no download','player.playFailed':'Reprodução indisponível',
+        'queue.downloading':'Baixando...','queue.completed':'{done}/{total} concluído(s)','queue.errors':'{n} erro(s)',
+        'sel.count':'{n} selecionado(s)',
     },
     es: {
         _name: 'Español', _flag: '🇲🇽',
@@ -1486,6 +2002,17 @@ const LOCALES = {
         'status.ready':'Listo','status.loginSuccess':'Inicio de sesión exitoso','status.loginFail':'Error de inicio de sesión',
         'status.saved':'Ajustes guardados','status.saveFail':'Error al guardar',
         'status.dlComplete':'Descarga completada',
+        'sf.logLevel':'Nivel de log',
+        'ctx.play':'▶ Reproducir','ctx.dl':'Descargar','ctx.dlSel':'Descargar selección',
+        'ctx.dlSelCount':'Descargar selección ({n})','ctx.copyUrl':'Copiar URL',
+        'confirm.missingTitle':'{n} pista(s) no encontrada(s) localmente.',
+        'confirm.missingMsg':'¿Descargar las pistas faltantes ahora?\n(La reproducción comienza de inmediato durante la descarga)',
+        'confirm.download':'Descargar','confirm.thisTrackOnly':'Solo esta pista',
+        'toast.fileNotFound':'Archivo no encontrado tras la descarga.','toast.dlFailed':'Error de descarga: {e}',
+        'toast.urlCopied':'URL copiada','toast.albumRemoved':'"{name}" no está disponible y ha sido eliminado.',
+        'player.downloading':'Descargando...','player.dlFailed':'Error de descarga','player.playFailed':'Reproducción no disponible',
+        'queue.downloading':'Descargando...','queue.completed':'{done}/{total} completado(s)','queue.errors':'{n} error(es)',
+        'sel.count':'{n} seleccionado(s)',
     },
     sv: {
         _name: 'Svenska', _flag: '🇸🇪',
@@ -1514,6 +2041,17 @@ const LOCALES = {
         'status.ready':'Redo','status.loginSuccess':'Inloggning lyckades','status.loginFail':'Inloggning misslyckades',
         'status.saved':'Inställningar sparade','status.saveFail':'Kunde inte spara',
         'status.dlComplete':'Nedladdning klar',
+        'sf.logLevel':'Loggnivå',
+        'ctx.play':'▶ Spela','ctx.dl':'Ladda ner','ctx.dlSel':'Ladda ner valda',
+        'ctx.dlSelCount':'Ladda ner valda ({n})','ctx.copyUrl':'Kopiera URL',
+        'confirm.missingTitle':'{n} låt(ar) saknas lokalt.',
+        'confirm.missingMsg':'Ladda ner de saknade låtarna nu?\n(Uppspelning startar omedelbart under nedladdning)',
+        'confirm.download':'Ladda ner','confirm.thisTrackOnly':'Bara denna låt',
+        'toast.fileNotFound':'Filen hittades inte efter nedladdning.','toast.dlFailed':'Nedladdning misslyckades: {e}',
+        'toast.urlCopied':'URL kopierad','toast.albumRemoved':'"{name}" är otillgängligt och har tagits bort.',
+        'player.downloading':'Laddar ner...','player.dlFailed':'Nedladdning misslyckades','player.playFailed':'Uppspelning ej möjlig',
+        'queue.downloading':'Laddar ner...','queue.completed':'{done}/{total} klara','queue.errors':'{n} fel',
+        'sel.count':'{n} valda',
     },
     no: {
         _name: 'Norsk', _flag: '🇳🇴',
@@ -1542,6 +2080,17 @@ const LOCALES = {
         'status.ready':'Klar','status.loginSuccess':'Innlogging vellykket','status.loginFail':'Innlogging mislyktes',
         'status.saved':'Innstillinger lagret','status.saveFail':'Kunne ikke lagre',
         'status.dlComplete':'Nedlasting fullført',
+        'sf.logLevel':'Loggnivå',
+        'ctx.play':'▶ Spill av','ctx.dl':'Last ned','ctx.dlSel':'Last ned valgte',
+        'ctx.dlSelCount':'Last ned valgte ({n})','ctx.copyUrl':'Kopier URL',
+        'confirm.missingTitle':'{n} spor mangler lokalt.',
+        'confirm.missingMsg':'Laste ned de manglende sporene nå?\n(Avspilling starter umiddelbart under nedlasting)',
+        'confirm.download':'Last ned','confirm.thisTrackOnly':'Bare dette sporet',
+        'toast.fileNotFound':'Filen ble ikke funnet etter nedlasting.','toast.dlFailed':'Nedlasting mislyktes: {e}',
+        'toast.urlCopied':'URL kopiert','toast.albumRemoved':'"{name}" er utilgjengelig og er fjernet.',
+        'player.downloading':'Laster ned...','player.dlFailed':'Nedlasting mislyktes','player.playFailed':'Avspilling utilgjengelig',
+        'queue.downloading':'Laster ned...','queue.completed':'{done}/{total} fullført','queue.errors':'{n} feil',
+        'sel.count':'{n} valgt',
     },
     zh: {
         _name: '中文', _flag: '🇨🇳',
@@ -1570,6 +2119,17 @@ const LOCALES = {
         'status.ready':'就绪','status.loginSuccess':'登录成功','status.loginFail':'登录失败',
         'status.saved':'设置已保存','status.saveFail':'保存失败',
         'status.dlComplete':'下载完成',
+        'sf.logLevel':'日志级别',
+        'ctx.play':'▶ 播放','ctx.dl':'下载','ctx.dlSel':'下载所选',
+        'ctx.dlSelCount':'下载所选 ({n})','ctx.copyUrl':'复制链接',
+        'confirm.missingTitle':'本地缺少 {n} 首曲目。',
+        'confirm.missingMsg':'现在下载缺失的曲目吗？\n（下载过程中播放即刻开始）',
+        'confirm.download':'下载','confirm.thisTrackOnly':'仅此曲目',
+        'toast.fileNotFound':'下载后未找到文件。','toast.dlFailed':'下载失败：{e}',
+        'toast.urlCopied':'链接已复制','toast.albumRemoved':'"{name}" 不可用，已从列表中移除。',
+        'player.downloading':'下载中...','player.dlFailed':'下载失败','player.playFailed':'无法播放',
+        'queue.downloading':'下载中...','queue.completed':'已完成 {done}/{total}','queue.errors':'{n} 个错误',
+        'sel.count':'已选 {n} 项',
     },
 };
 
@@ -1685,6 +2245,7 @@ const settingsFields = [
     { key:'playlist_folder', lk:'sf.createPlaylist', type:'bool' },
     { key:'playlist_format', lk:'sf.playlistFormat', type:'enum', options:['m3u8','m3u'] },
     { key:'track_num_pad_zero', lk:'sf.trackPad', type:'bool' },
+    { key:'log_level', lk:'sf.logLevel', type:'enum', options:['error','warn','info','debug','trace'] },
 ];
 
 function updateQualityBadges(settings) {
@@ -1880,36 +2441,116 @@ if (listen) {
 
     listen('download-start', e => {
         const p = e.payload;
-        setStatus(`Downloading: ${p.url} (${p.total || 1} items)`);
+        const item = queue.get(p.queueId);
+        if (!item) return;
+        if (p.tracks && p.tracks.length > 0) {
+            // collection (album / playlist / mix): pre-populate track list
+            setQueueTracks(p.queueId, p.tracks);
+        } else {
+            // single track / video: just mark as downloading
+            updateQueue(p.queueId, 'downloading');
+        }
+        setStatus(`Downloading: ${p.url}${p.total > 1 ? ` (${p.total} tracks)` : ''}`);
     });
+
     listen('download-progress', e => {
         const p = e.payload;
+        if (!p.queueId) return;
+        const item = queue.get(p.queueId);
+        if (!item) return;
         const prog = `[${p.current}/${p.total}] ${p.track}`;
         setStatus(prog);
-        if (p.queueId) updateQueue(p.queueId, 'downloading', prog);
+        if (p.trackIndex !== undefined && item.tracks) {
+            // mark previous active track back to waiting if it wasn't finished yet
+            const prev = item.tracks.findIndex(t => t.status === 'downloading');
+            if (prev >= 0 && prev !== p.trackIndex) item.tracks[prev].status = 'waiting';
+            updateQueueTrack(p.queueId, p.trackIndex, 'downloading');
+        } else {
+            updateQueue(p.queueId, 'downloading', prog);
+        }
     });
+
+    listen('track-done', e => {
+        const p = e.payload;
+        if (p.queueId && p.trackIndex !== undefined) {
+            updateQueueTrack(p.queueId, p.trackIndex, p.status, p.error);
+        }
+    });
+
     listen('download-complete', e => {
         const p = e.payload;
-        setStatus('Download complete');
-        if (p.queueId) {
-            updateQueue(p.queueId, 'completed');
-            const item = queue.get(p.queueId);
-            if (item) addDlLog(item.name, 'completed');
+        if (!p.queueId) return;
+        const item = queue.get(p.queueId);
+        if (!item) return;
+        // flush any tracks still showing 'waiting' or 'downloading' to completed
+        if (item.tracks) {
+            item.tracks.forEach(t => {
+                if (t.status === 'waiting' || t.status === 'downloading') t.status = 'ok';
+            });
         }
+        item.status = 'completed';
+        renderQueue();
+        addDlLog(item.name, 'completed');
+        setStatus('Download complete');
     });
+
     listen('download-cancelled', e => {
         const p = e.payload;
-        if (p.queueId) {
-            updateQueue(p.queueId, 'cancelled');
-            setStatus('Cancelled');
+        if (!p.queueId) return;
+        const item = queue.get(p.queueId);
+        if (!item) return;
+        if (item.tracks) {
+            item.tracks.forEach(t => {
+                if (t.status === 'waiting' || t.status === 'downloading') t.status = 'cancelled';
+            });
         }
+        item.status = 'cancelled';
+        renderQueue();
+        setStatus('Cancelled');
     });
+
     listen('download-error', e => {
         const p = e.payload;
+        if (!p.queueId) return;
         setStatus(`Error: ${p.error}`);
-        if (p.queueId) updateQueue(p.queueId, 'error', p.error);
+        // only mark the whole queue item as error if it's a top-level failure (no trackIndex)
+        if (p.trackIndex === undefined) {
+            updateQueue(p.queueId, 'error', p.error);
+        }
+        // track-level errors are already handled by track-done
     });
 }
+
+// ---- Keyboard shortcuts ----
+document.addEventListener('keydown', e => {
+    // ignore when focus is in an input / textarea
+    if (e.target.matches('input,textarea,select')) return;
+    // ignore when confirm overlay is open
+    if (document.getElementById('confirm-overlay').style.display !== 'none') return;
+
+    switch (e.key) {
+        case ' ':
+            if (document.getElementById('player-bar').classList.contains('active')) {
+                e.preventDefault();
+                playerToggle();
+            }
+            break;
+        case 'ArrowLeft':
+            if (audio.src) { e.preventDefault(); audio.currentTime = Math.max(0, audio.currentTime - 10); }
+            break;
+        case 'ArrowRight':
+            if (audio.src) { e.preventDefault(); audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10); }
+            break;
+        case 'ArrowUp':
+            e.preventDefault();
+            playerPrev();
+            break;
+        case 'ArrowDown':
+            e.preventDefault();
+            playerNext();
+            break;
+    }
+});
 
 // ---- Init ----
 initOnboardLangSelect();

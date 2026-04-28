@@ -428,7 +428,6 @@ pub fn run_gui() {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
-        return;
     }
 
     #[cfg(not(target_os = "macos"))]
