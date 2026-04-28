@@ -61,7 +61,11 @@ pub enum Commands {
     #[command(subcommand)]
     Fav(FavCommands),
     /// Launch graphical interface
-    Gui,
+    Gui {
+        /// Run GUI in-process without detaching (used internally)
+        #[arg(long, hide = true)]
+        no_detach: bool,
+    },
     /// Launch terminal UI
     Tui,
 }
@@ -316,8 +320,12 @@ pub async fn run() -> Result<()> {
         // ---------------------------------------------------------------
         // GUI
         // ---------------------------------------------------------------
-        Some(Commands::Gui) => {
-            run_gui();
+        Some(Commands::Gui { no_detach }) => {
+            if no_detach {
+                crate::gui::run_gui();
+            } else {
+                run_gui();
+            }
         }
 
         // ---------------------------------------------------------------
@@ -388,7 +396,34 @@ async fn handle_download(urls: Vec<String>, list: Option<String>) -> Result<()> 
 
 #[cfg(feature = "gui")]
 pub fn run_gui() {
-    crate::gui::run_gui();
+    // Re-exec as a detached process so the terminal is not blocked.
+    // On macOS, use `open -a` if we're inside a .app bundle; otherwise fork.
+    let exe = std::env::current_exe().expect("failed to get exe path");
+
+    #[cfg(target_os = "macos")]
+    {
+        // If running from inside a .app bundle, delegate to `open` to avoid blocking.
+        let exe_str = exe.to_string_lossy();
+        if exe_str.contains(".app/Contents/MacOS/") {
+            crate::gui::run_gui();
+            return;
+        }
+        // Running from PATH (e.g. Homebrew) — detach a child process.
+        let _ = std::process::Command::new(&exe)
+            .arg("gui")
+            .arg("--no-detach")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+        return;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = exe; // suppress unused warning
+        crate::gui::run_gui();
+    }
 }
 
 #[cfg(not(feature = "gui"))]
