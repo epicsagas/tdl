@@ -18,7 +18,7 @@ use crate::pathfmt::format::{
 };
 use crate::tidal::media::{MediaType, Track};
 use crate::tidal::search;
-use crate::tidal::session::TidalSession;
+use crate::tidal::session::{self as tidal_session, TidalSession};
 use crate::tidal::stream;
 
 // ---------------------------------------------------------------------------
@@ -34,7 +34,11 @@ pub struct Downloader {
 
 impl Downloader {
     /// Create a new downloader backed by the given shared session.
+    ///
+    /// Automatically installs a 401 auto-refresh callback on the session so
+    /// that expired access tokens are transparently refreshed during downloads.
     pub fn new(session: Arc<Mutex<TidalSession>>, settings: Settings) -> Self {
+        tidal_session::install_auto_refresh(&session);
         Self::with_cancel(session, settings, CancellationToken::new())
     }
 
@@ -833,12 +837,11 @@ impl Downloader {
                 // GET /tracks/{id} returns album with no artists[] — only a single
                 // album.artist field that may be comma-joined (e.g. "A, B"). Fetch
                 // the full album to get album.artists[] so primary_artist() works.
-                if let Some(album) = &track.album {
-                    if album.artists.as_ref().map_or(true, |v| v.is_empty()) {
-                        if let Ok(full) = search::get_album(&sess.request, album.id).await {
-                            track.album = Some(full);
-                        }
-                    }
+                if let Some(album) = &track.album
+                    && album.artists.as_ref().is_none_or(|v| v.is_empty())
+                    && let Ok(full) = search::get_album(&sess.request, album.id).await
+                {
+                    track.album = Some(full);
                 }
                 Ok(track)
             }

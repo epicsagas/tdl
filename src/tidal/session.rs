@@ -99,9 +99,9 @@ impl TidalSession {
     pub async fn login(&mut self) -> Result<()> {
         // 1. Token looks valid locally -- verify with the API.
         if self.token.is_valid() {
-            self.apply_auth_to_request();
+            self.apply_auth_to_request().await;
             if let Ok(session) = self.validate_session().await {
-                self.set_session_info(&session);
+                self.set_session_info(&session).await;
                 println!(
                     "Already logged in as user {}.",
                     session.user_id.unwrap_or(0)
@@ -115,7 +115,7 @@ impl TidalSession {
             println!("Access token expired, refreshing...");
             if self.refresh_token().await.is_ok() {
                 let session = self.validate_session().await?;
-                self.set_session_info(&session);
+                self.set_session_info(&session).await;
                 println!("Token refreshed successfully.");
                 return Ok(());
             }
@@ -135,32 +135,32 @@ impl TidalSession {
         F: FnOnce(&str, &str),
     {
         if self.token.is_valid() {
-            self.apply_auth_to_request();
+            self.apply_auth_to_request().await;
             if let Ok(session) = self.validate_session().await {
-                self.set_session_info(&session);
+                self.set_session_info(&session).await;
                 return Ok(());
             }
         }
         if self.token.refresh_token.is_some()
             && self.refresh_token().await.is_ok() {
                 let session = self.validate_session().await?;
-                self.set_session_info(&session);
+                self.set_session_info(&session).await;
                 return Ok(());
             }
         self.device_auth_login(url_handler).await
     }
 
     /// Push current token credentials into the TidalRequest helper.
-    fn apply_auth_to_request(&mut self) {
+    async fn apply_auth_to_request(&self) {
         if let (Some(ttype), Some(access)) =
             (&self.token.token_type, &self.token.access_token)
         {
-            self.request.set_auth(ttype.clone(), access.clone());
+            self.request.set_auth(ttype.clone(), access.clone()).await;
         }
     }
 
     /// Set session-level fields on both the token and the request helper.
-    fn set_session_info(&mut self, session: &SessionResponse) {
+    async fn set_session_info(&mut self, session: &SessionResponse) {
         if let Some(ref session_id) = session.session_id {
             self.token.session_id = Some(session_id.clone());
         }
@@ -171,7 +171,8 @@ impl TidalSession {
             (&session.session_id, &session.country_code)
         {
             self.request
-                .set_session(session_id.clone(), country_code.clone());
+                .set_session(session_id.clone(), country_code.clone())
+                .await;
         }
         if let Some(user_id) = session.user_id {
             self.token.user_id = Some(user_id);
@@ -215,7 +216,7 @@ impl TidalSession {
             );
         }
 
-        self.apply_token_response(&token_resp);
+        self.apply_token_response(&token_resp).await;
         info!("Access token refreshed successfully");
         Ok(())
     }
@@ -310,9 +311,9 @@ impl TidalSession {
                 }
                 // Success.
                 (None, Some(_)) => {
-                    self.apply_token_response(&token_resp);
+                    self.apply_token_response(&token_resp).await;
                     let session = self.validate_session().await?;
-                    self.set_session_info(&session);
+                    self.set_session_info(&session).await;
                     info!(user_id = ?session.user_id, country = ?session.country_code, "OAuth device login successful");
                     println!("Login successful.");
                     return Ok(());
@@ -400,9 +401,9 @@ impl TidalSession {
         }
 
         self.token.is_pkce = true;
-        self.apply_token_response(&token_resp);
+        self.apply_token_response(&token_resp).await;
         let session = self.validate_session().await?;
-        self.set_session_info(&session);
+        self.set_session_info(&session).await;
         Ok(())
     }
 
@@ -444,7 +445,7 @@ impl TidalSession {
     // -----------------------------------------------------------------------
 
     /// Apply a successful token response to the session state and persist it.
-    fn apply_token_response(&mut self, resp: &TokenResponse) {
+    async fn apply_token_response(&mut self, resp: &TokenResponse) {
         if let Some(ref access_token) = resp.access_token {
             self.token.access_token = Some(access_token.clone());
         }
@@ -463,13 +464,45 @@ impl TidalSession {
         }
 
         // Push the new credentials into the request helper.
-        self.apply_auth_to_request();
+        self.apply_auth_to_request().await;
 
         // Best-effort save -- should not fail the login flow.
         if let Err(e) = self.token.save() {
             eprintln!("Warning: failed to save token: {e}");
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Auto-refresh setup
+// ---------------------------------------------------------------------------
+
+/// Install a 401 auto-refresh callback on the session's `TidalRequest`.
+///
+/// Call this once after wrapping `TidalSession` in `Arc<Mutex<>>`.
+/// When any API request returns HTTP 401, the callback will lock the
+/// session, refresh the access token, and update the auth headers —
+/// the failed request is then retried automatically.
+pub fn install_auto_refresh(session: &std::sync::Arc<tokio::sync::Mutex<TidalSession>>) {
+    let weak = std::sync::Arc::downgrade(session);
+    let callback: crate::tidal::request::RefreshCallback =
+        std::sync::Arc::new(move || {
+            let session = match weak.upgrade() {
+                Some(s) => s,
+                None => return Box::pin(async { Err(anyhow!("Session dropped")) }),
+            };
+            Box::pin(async move {
+                let mut sess = session.lock().await;
+                info!("Auto-refreshing access token (401 detected)");
+                sess.refresh_token().await?;
+                sess.apply_auth_to_request().await;
+                info!("Access token auto-refreshed successfully");
+                Ok(())
+            })
+        });
+
+    let mut sess = session.blocking_lock();
+    sess.request.set_on_unauthorized(callback);
 }
 
 // ---------------------------------------------------------------------------

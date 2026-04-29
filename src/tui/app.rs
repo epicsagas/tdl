@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use crate::config::settings::Settings;
 use crate::config::token::Token;
 use crate::download::downloader::Downloader;
-use crate::tidal::session::TidalSession;
+use crate::tidal::session::{self as tidal_session, TidalSession};
 
 // ---------------------------------------------------------------------------
 // Screen enum
@@ -827,7 +827,9 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                             sess.pkce_exchange_code(&redirect_url, &verifier, &unique_key)
                                 .await
                                 .map_err(|e| anyhow::anyhow!("PKCE exchange failed: {e}"))?;
-                            Ok(Arc::new(Mutex::new(sess)))
+                            let session = Arc::new(Mutex::new(sess));
+                            tidal_session::install_auto_refresh(&session);
+                            Ok(session)
                         }.await;
 
                         match result {
@@ -870,6 +872,7 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                             } else {
                                 Arc::new(Mutex::new(TidalSession::new(settings.clone())?))
                             };
+                            tidal_session::install_auto_refresh(&session);
                             {
                                 let mut sess = session.lock().await;
                                 let tx3 = tx2.clone();
@@ -950,7 +953,9 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                     let settings = Settings::load()?;
                     let mut sess = TidalSession::new(settings)?;
                     sess.login().await?;
-                    Ok(Arc::new(Mutex::new(sess)))
+                    let session = Arc::new(Mutex::new(sess));
+                    tidal_session::install_auto_refresh(&session);
+                    Ok(session)
                 });
                 match result {
                     Ok(s) => {

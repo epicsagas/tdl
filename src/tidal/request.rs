@@ -2,9 +2,11 @@ use anyhow::{anyhow, Result};
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 const TIDAL_API_V1: &str = "https://api.tidal.com/v1/";
 const TIDAL_API_V2: &str = "https://api.tidal.com/v2/";
@@ -33,13 +35,21 @@ pub const fn tidal_login_url() -> &'static str {
     TIDAL_LOGIN_URL
 }
 
+pub type RefreshCallback =
+    Arc<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>;
+
 pub struct TidalRequest {
     client: Client,
+    auth: RwLock<AuthState>,
+    client_version: String,
+    on_unauthorized: Option<RefreshCallback>,
+}
+
+struct AuthState {
     access_token: Option<String>,
     token_type: Option<String>,
     session_id: Option<String>,
     country_code: Option<String>,
-    client_version: String,
 }
 
 impl TidalRequest {
@@ -55,29 +65,41 @@ impl TidalRequest {
 
         Ok(Self {
             client,
-            access_token: None,
-            token_type: None,
-            session_id: None,
-            country_code: None,
+            auth: RwLock::new(AuthState {
+                access_token: None,
+                token_type: None,
+                session_id: None,
+                country_code: None,
+            }),
             client_version: CLIENT_VERSION.to_string(),
+            on_unauthorized: None,
         })
     }
 
     /// Sets authentication credentials used for API requests.
-    pub fn set_auth(&mut self, token_type: String, access_token: String) {
-        self.token_type = Some(token_type);
-        self.access_token = Some(access_token);
+    pub async fn set_auth(&self, token_type: String, access_token: String) {
+        let mut auth = self.auth.write().await;
+        auth.token_type = Some(token_type);
+        auth.access_token = Some(access_token);
     }
 
     /// Sets session parameters that are appended as query parameters to V1 requests.
-    pub fn set_session(&mut self, session_id: String, country_code: String) {
-        self.session_id = Some(session_id);
-        self.country_code = Some(country_code);
+    pub async fn set_session(&self, session_id: String, country_code: String) {
+        let mut auth = self.auth.write().await;
+        auth.session_id = Some(session_id);
+        auth.country_code = Some(country_code);
     }
 
     /// Updates just the country code used in V1 query parameters.
-    pub fn set_country_code(&mut self, country_code: impl Into<String>) {
-        self.country_code = Some(country_code.into());
+    pub async fn set_country_code(&self, country_code: impl Into<String>) {
+        let mut auth = self.auth.write().await;
+        auth.country_code = Some(country_code.into());
+    }
+
+    /// Set a callback invoked when a 401 Unauthorized response is received.
+    /// The callback should refresh the token and update auth via `set_auth()`.
+    pub fn set_on_unauthorized(&mut self, callback: RefreshCallback) {
+        self.on_unauthorized = Some(callback);
     }
 
     /// Convenience method: send a V1 GET request and deserialize the JSON
@@ -127,12 +149,14 @@ impl TidalRequest {
         let mut query = params.unwrap_or_default();
 
         // Always include session parameters for V1 requests.
-        if let Some(ref sid) = self.session_id {
+        let auth = self.auth.read().await;
+        if let Some(ref sid) = auth.session_id {
             query.insert("sessionId".to_string(), sid.clone());
         }
-        if let Some(ref cc) = self.country_code {
+        if let Some(ref cc) = auth.country_code {
             query.insert("countryCode".to_string(), cc.clone());
         }
+        drop(auth);
         // Use a generous default limit unless the caller overrides it.
         query.entry("limit".to_string()).or_insert("10000".to_string());
 
@@ -206,9 +230,11 @@ impl TidalRequest {
     /// such as cover art.
     pub async fn get_v1_raw(&self, url: &str) -> Result<Response> {
         let mut query = HashMap::new();
-        if let Some(ref cc) = self.country_code {
+        let auth = self.auth.read().await;
+        if let Some(ref cc) = auth.country_code {
             query.insert("countryCode".to_string(), cc.clone());
         }
+        drop(auth);
         self.send_with_retry(url, &query).await
     }
 
@@ -218,6 +244,8 @@ impl TidalRequest {
     ///
     /// Retries are attempted when the server responds with HTTP 429 or a 5xx status,
     /// or when the request itself fails at the transport level.
+    /// On HTTP 401, invokes the `on_unauthorized` callback (if set) to refresh the
+    /// token, then retries the request once.
     /// The back-off delay is `BACKOFF_FACTOR * 2^attempt` seconds.
     async fn send_with_retry(
         &self,
@@ -225,20 +253,49 @@ impl TidalRequest {
         query: &HashMap<String, String>,
     ) -> Result<Response> {
         let mut attempt: u32 = 0;
+        let mut refreshed_on_401 = false;
 
         loop {
+            let auth = self.auth.read().await;
             let request = self
                 .client
                 .get(url)
                 .query(query)
                 .header("x-tidal-client-version", &self.client_version);
 
-            let request = self.attach_auth_header(request);
+            let request = if let (Some(ttype), Some(token)) =
+                (&auth.token_type, &auth.access_token)
+            {
+                request.header("Authorization", format!("{ttype} {token}"))
+            } else {
+                request
+            };
+            drop(auth);
 
             debug!(url = %url, attempt = attempt, "HTTP GET");
             match request.send().await {
                 Ok(resp) => {
                     let status = resp.status();
+
+                    // Handle 401 Unauthorized — try refresh once.
+                    if status == StatusCode::UNAUTHORIZED && !refreshed_on_401
+                        && let Some(ref callback) = self.on_unauthorized
+                    {
+                        info!(url = %url, "Received 401, attempting token refresh");
+                        match callback().await {
+                            Ok(()) => {
+                                refreshed_on_401 = true;
+                                continue;
+                            }
+                            Err(e) => {
+                                warn!(url = %url, "Token refresh failed: {e}");
+                                return Err(anyhow!(
+                                    "Request to {url} returned 401 and token refresh failed: {e}"
+                                ));
+                            }
+                        }
+                    }
+
                     if status == StatusCode::TOO_MANY_REQUESTS
                         || status.as_u16() >= 500
                     {
@@ -271,15 +328,6 @@ impl TidalRequest {
             }
         }
     }
-
-    /// Attaches the Authorization header to a request builder when credentials are present.
-    fn attach_auth_header(&self, builder: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        if let (Some(ttype), Some(token)) = (&self.token_type, &self.access_token) {
-            builder.header("Authorization", format!("{ttype} {token}"))
-        } else {
-            builder
-        }
-    }
 }
 
 #[cfg(test)]
@@ -292,20 +340,30 @@ mod tests {
         assert!(req.is_ok());
     }
 
-    #[test]
-    fn test_set_auth() {
-        let mut req = TidalRequest::new().unwrap();
-        req.set_auth("Bearer".to_string(), "test-token".to_string());
-        assert_eq!(req.token_type, Some("Bearer".to_string()));
-        assert_eq!(req.access_token, Some("test-token".to_string()));
+    #[tokio::test]
+    async fn test_set_auth() {
+        let req = TidalRequest::new().unwrap();
+        {
+            let mut auth = req.auth.write().await;
+            auth.token_type = Some("Bearer".to_string());
+            auth.access_token = Some("test-token".to_string());
+        }
+        let auth = req.auth.read().await;
+        assert_eq!(auth.token_type, Some("Bearer".to_string()));
+        assert_eq!(auth.access_token, Some("test-token".to_string()));
     }
 
-    #[test]
-    fn test_set_session() {
-        let mut req = TidalRequest::new().unwrap();
-        req.set_session("session-123".to_string(), "US".to_string());
-        assert_eq!(req.session_id, Some("session-123".to_string()));
-        assert_eq!(req.country_code, Some("US".to_string()));
+    #[tokio::test]
+    async fn test_set_session() {
+        let req = TidalRequest::new().unwrap();
+        {
+            let mut auth = req.auth.write().await;
+            auth.session_id = Some("session-123".to_string());
+            auth.country_code = Some("US".to_string());
+        }
+        let auth = req.auth.read().await;
+        assert_eq!(auth.session_id, Some("session-123".to_string()));
+        assert_eq!(auth.country_code, Some("US".to_string()));
     }
 
     #[test]

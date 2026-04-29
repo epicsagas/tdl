@@ -13,7 +13,7 @@ use crate::download::downloader::Downloader;
 use crate::pathfmt::format::{build_track_path, check_file_exists};
 use crate::tidal::media::MediaType;
 use crate::tidal::search;
-use crate::tidal::session::TidalSession;
+use crate::tidal::session::{self as tidal_session, TidalSession};
 
 struct PkceState {
     session: TidalSession,
@@ -41,6 +41,7 @@ async fn ensure_session(
     let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
     session.login().await.map_err(|e| e.to_string())?;
     let session = Arc::new(Mutex::new(session));
+    tidal_session::install_auto_refresh(&session);
     {
         let mut guard = state.session.lock().await;
         *guard = Some(Arc::clone(&session));
