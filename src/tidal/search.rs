@@ -92,14 +92,22 @@ pub async fn get_album(request: &TidalRequest, album_id: u64) -> Result<Album> {
 
 /// Fetch all tracks belonging to an album, automatically paginating.
 ///
-/// Tries V1 `albums/{id}/items` first; on 404 falls back to V1 `albums/{id}/tracks`.
+/// Tries V1 `albums/{id}/tracks` first (returns only tracks).
+/// On 404 falls back to V1 `albums/{id}/items` which may contain mixed
+/// item types (videos, etc.) — non-track items are silently skipped.
 pub async fn get_album_tracks(request: &TidalRequest, album_id: u64) -> Result<Vec<Track>> {
-    let items_path = format!("albums/{album_id}/items");
-    match paginate_wrapped_items::<Track>(request, &items_path).await {
-        Ok(tracks) => Ok(tracks),
+    let tracks_path = format!("albums/{album_id}/tracks");
+    match paginate_items::<Track>(request, &tracks_path).await {
+        Ok(tracks) => {
+            tracing::info!(album_id = album_id, count = tracks.len(), "Album tracks (tracks endpoint)");
+            Ok(tracks)
+        }
         Err(e) if e.to_string().contains("404") => {
-            let tracks_path = format!("albums/{album_id}/tracks");
-            paginate_items::<Track>(request, &tracks_path).await
+            tracing::info!(album_id = album_id, "tracks endpoint 404, falling back to items endpoint");
+            let items_path = format!("albums/{album_id}/items");
+            let tracks = paginate_wrapped_items::<Track>(request, &items_path).await?;
+            tracing::info!(album_id = album_id, count = tracks.len(), "Album tracks (items endpoint)");
+            Ok(tracks)
         }
         Err(e) => Err(e),
     }
@@ -322,6 +330,11 @@ async fn paginate_wrapped_items<T: serde::de::DeserializeOwned>(
                         "Skipping item that failed to deserialize"
                     ),
                 }
+            } else if wrapped.item_type.is_some() {
+                tracing::debug!(
+                    item_type = ?wrapped.item_type,
+                    "Skipping item with null value"
+                );
             }
         }
 
