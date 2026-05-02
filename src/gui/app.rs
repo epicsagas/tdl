@@ -13,7 +13,7 @@ use crate::download::downloader::Downloader;
 use crate::pathfmt::format::{build_track_path, check_file_exists};
 use crate::tidal::media::MediaType;
 use crate::tidal::search;
-use crate::tidal::session::{self as tidal_session, TidalSession};
+use crate::tidal::session::TidalSession;
 
 struct PkceState {
     session: TidalSession,
@@ -39,9 +39,12 @@ async fn ensure_session(
     }
     let settings = Settings::load().map_err(|e| e.to_string())?;
     let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
-    session.restore_session().await.map_err(|e| e.to_string())?;
+
+    // Try to restore session, but don't fail if we're just logged out.
+    // If we can't restore, we'll return an error later when a request is made.
+    let _ = session.restore_session().await;
+
     let session = Arc::new(Mutex::new(session));
-    tidal_session::install_auto_refresh(&session);
     {
         let mut guard = state.session.lock().await;
         *guard = Some(Arc::clone(&session));
@@ -82,7 +85,7 @@ async fn save_settings(settings: serde_json::Value) -> Result<(), String> {
 async fn get_login_status() -> Result<serde_json::Value, String> {
     let token = Token::load().unwrap_or_default();
     Ok(serde_json::json!({
-        "logged_in": token.is_valid(),
+        "logged_in": token.is_valid() || token.is_restorable(),
         "user_id": token.user_id,
         "is_pkce": token.is_pkce,
     }))
@@ -90,15 +93,32 @@ async fn get_login_status() -> Result<serde_json::Value, String> {
 
 #[tauri::command]
 async fn login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let settings = Settings::load().map_err(|e| e.to_string())?;
-    let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
+    info!("GUI Login command triggered");
+    let settings = Settings::load().map_err(|e| {
+        error!("Failed to load settings: {e}");
+        e.to_string()
+    })?;
+    let mut session = TidalSession::new(settings).map_err(|e| {
+        error!("Failed to create TidalSession: {e}");
+        e.to_string()
+    })?;
+
+    info!("Checking existing session state...");
     session
         .login_with_url_handler(|url, code| {
+            info!("Emitting login-url event and opening browser...");
             let _ = app.emit("login-url", serde_json::json!({ "url": url, "code": code }));
-            let _ = open_url(url);
+            if let Err(e) = open_url(url) {
+                error!("Failed to open URL: {e}");
+            }
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            error!("Login process failed: {e}");
+            e.to_string()
+        })?;
+
+    info!("Login successful, updating application state");
     let session = Arc::new(Mutex::new(session));
     {
         let mut guard = state.session.lock().await;
@@ -108,13 +128,26 @@ async fn login(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), 
 }
 
 fn open_url(url: &str) -> std::io::Result<()> {
+    info!("Opening URL: {}", url);
     #[cfg(target_os = "macos")]
-    Command::new("open").arg(url).spawn()?.wait().map(|_| ())?;
+    let res = Command::new("open").arg(url).spawn();
     #[cfg(target_os = "linux")]
-    Command::new("xdg-open").arg(url).spawn()?.wait().map(|_| ())?;
+    let res = Command::new("xdg-open").arg(url).spawn();
     #[cfg(target_os = "windows")]
-    Command::new("cmd").args(["/c", "start", "", url]).spawn()?.wait().map(|_| ())?;
-    Ok(())
+    let res = Command::new("cmd").args(["/c", "start", "", url]).spawn();
+
+    match res {
+        Ok(_child) => {
+            // Don't wait for the browser process to finish.
+            // Just ensure it started correctly.
+            info!("Browser process spawned successfully");
+            Ok(())
+        }
+        Err(e) => {
+            error!("Failed to spawn browser process: {e}");
+            Err(e)
+        }
+    }
 }
 
 #[tauri::command]

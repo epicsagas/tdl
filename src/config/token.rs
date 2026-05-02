@@ -104,6 +104,11 @@ impl Token {
 
         self.expiry_time > now
     }
+
+    /// Check whether the session can be restored using a refresh token.
+    pub fn is_restorable(&self) -> bool {
+        self.refresh_token.as_ref().is_some_and(|t| !t.is_empty())
+    }
 }
 
 #[cfg(test)]

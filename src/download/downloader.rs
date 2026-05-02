@@ -18,7 +18,7 @@ use crate::pathfmt::format::{
 };
 use crate::tidal::media::{MediaType, Track};
 use crate::tidal::search;
-use crate::tidal::session::{self as tidal_session, TidalSession};
+use crate::tidal::session::TidalSession;
 use crate::tidal::stream;
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,6 @@ impl Downloader {
     /// Automatically installs a 401 auto-refresh callback on the session so
     /// that expired access tokens are transparently refreshed during downloads.
     pub fn new(session: Arc<Mutex<TidalSession>>, settings: Settings) -> Self {
-        tidal_session::install_auto_refresh(&session);
         Self::with_cancel(session, settings, CancellationToken::new())
     }
 

@@ -828,7 +828,6 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                                 .await
                                 .map_err(|e| anyhow::anyhow!("PKCE exchange failed: {e}"))?;
                             let session = Arc::new(Mutex::new(sess));
-                            tidal_session::install_auto_refresh(&session);
                             Ok(session)
                         }.await;
 
@@ -872,7 +871,6 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                             } else {
                                 Arc::new(Mutex::new(TidalSession::new(settings.clone())?))
                             };
-                            tidal_session::install_auto_refresh(&session);
                             {
                                 let mut sess = session.lock().await;
                                 let tx3 = tx2.clone();
@@ -954,7 +952,6 @@ pub fn run_tui_with_rt(settings: &Settings, rt: tokio::runtime::Handle) -> Resul
                     let mut sess = TidalSession::new(settings)?;
                     sess.login().await?;
                     let session = Arc::new(Mutex::new(sess));
-                    tidal_session::install_auto_refresh(&session);
                     Ok(session)
                 });
                 match result {

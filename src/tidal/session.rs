@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::{self, Write};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use rand::RngExt;
-use tracing::info;
+use tracing::{info, error};
 
 use crate::config::settings::Settings;
 use crate::config::token::Token;
@@ -163,14 +163,17 @@ impl TidalSession {
                 info!("Session restored from saved token.");
                 return Ok(());
             }
+            // If validation fails (e.g. revoked), fall through to refresh.
         }
-        if self.token.refresh_token.is_some() {
-            info!("Access token expired, refreshing...");
+
+        if self.token.is_restorable() {
+            info!("Attempting session restoration via token refresh...");
             if self.refresh_token().await.is_ok() {
-                let session = self.validate_session().await?;
-                self.set_session_info(&session).await;
-                info!("Session restored after token refresh.");
-                return Ok(());
+                if let Ok(session) = self.validate_session().await {
+                    self.set_session_info(&session).await;
+                    info!("Session restored after token refresh.");
+                    return Ok(());
+                }
             }
         }
         bail!("Session expired or invalid. Please log in again.")
@@ -178,9 +181,7 @@ impl TidalSession {
 
     /// Push current token credentials into the TidalRequest helper.
     async fn apply_auth_to_request(&self) {
-        if let (Some(ttype), Some(access)) =
-            (&self.token.token_type, &self.token.access_token)
-        {
+        if let (Some(ttype), Some(access)) = (&self.token.token_type, &self.token.access_token) {
             self.request.set_auth(ttype.clone(), access.clone()).await;
         }
     }
@@ -273,7 +274,7 @@ impl TidalSession {
     where
         F: FnOnce(&str, &str),
     {
-        // Step 1: Request device authorization.
+        info!("Requesting device authorization...");
         let mut form = HashMap::new();
         form.insert("client_id".to_string(), self.client_id.clone());
         form.insert("scope".to_string(), SCOPE.to_string());
@@ -282,7 +283,16 @@ impl TidalSession {
             .request
             .post_auth("device_authorization", form)
             .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            error!("Device authorization request failed: {} - {}", status, body);
+            bail!("Failed to request device authorization: {}", body);
+        }
+
         let auth: DeviceAuthResponse = resp.json().await?;
+        info!("Device authorization received. User code: {}", auth.user_code);
 
         // The API may or may not return verificationUriComplete.
         // If present, use it directly; otherwise build it from verification_uri + user_code.
@@ -296,9 +306,11 @@ impl TidalSession {
             format!("https://{}", raw_url)
         };
 
+        info!("Calling URL handler with URL: {}", login_url);
         url_handler(&login_url, &auth.user_code);
 
         // Step 2: Poll for the token.
+        info!("Starting token polling loop (expires in {}s)...", auth.expires_in);
         let interval = Duration::from_secs(auth.interval);
         let deadline = SystemTime::now() + Duration::from_secs(auth.expires_in);
 
@@ -500,38 +512,6 @@ impl TidalSession {
             eprintln!("Warning: failed to save token: {e}");
         }
     }
-}
-
-// ---------------------------------------------------------------------------
-// Auto-refresh setup
-// ---------------------------------------------------------------------------
-
-/// Install a 401 auto-refresh callback on the session's `TidalRequest`.
-///
-/// Call this once after wrapping `TidalSession` in `Arc<Mutex<>>`.
-/// When any API request returns HTTP 401, the callback will lock the
-/// session, refresh the access token, and update the auth headers —
-/// the failed request is then retried automatically.
-pub fn install_auto_refresh(session: &std::sync::Arc<tokio::sync::Mutex<TidalSession>>) {
-    let weak = std::sync::Arc::downgrade(session);
-    let callback: crate::tidal::request::RefreshCallback =
-        std::sync::Arc::new(move || {
-            let session = match weak.upgrade() {
-                Some(s) => s,
-                None => return Box::pin(async { Err(anyhow!("Session dropped")) }),
-            };
-            Box::pin(async move {
-                let mut sess = session.lock().await;
-                info!("Auto-refreshing access token (401 detected)");
-                sess.refresh_token().await?;
-                sess.apply_auth_to_request().await;
-                info!("Access token auto-refreshed successfully");
-                Ok(())
-            })
-        });
-
-    let mut sess = session.blocking_lock();
-    sess.request.set_on_unauthorized(callback);
 }
 
 // ---------------------------------------------------------------------------

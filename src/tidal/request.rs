@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
-use tracing::{debug, info, warn};
+use tracing::{debug, warn};
 
 const TIDAL_API_V1: &str = "https://api.tidal.com/v1/";
 const TIDAL_API_V2: &str = "https://api.tidal.com/v2/";
@@ -35,14 +35,10 @@ pub const fn tidal_login_url() -> &'static str {
     TIDAL_LOGIN_URL
 }
 
-pub type RefreshCallback =
-    Arc<dyn Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<()>> + Send>> + Send + Sync>;
-
 pub struct TidalRequest {
     client: Client,
     auth: RwLock<AuthState>,
     client_version: String,
-    on_unauthorized: Option<RefreshCallback>,
 }
 
 struct AuthState {
@@ -72,7 +68,6 @@ impl TidalRequest {
                 country_code: None,
             }),
             client_version: CLIENT_VERSION.to_string(),
-            on_unauthorized: None,
         })
     }
 
@@ -94,12 +89,6 @@ impl TidalRequest {
     pub async fn set_country_code(&self, country_code: impl Into<String>) {
         let mut auth = self.auth.write().await;
         auth.country_code = Some(country_code.into());
-    }
-
-    /// Set a callback invoked when a 401 Unauthorized response is received.
-    /// The callback should refresh the token and update auth via `set_auth()`.
-    pub fn set_on_unauthorized(&mut self, callback: RefreshCallback) {
-        self.on_unauthorized = Some(callback);
     }
 
     /// Convenience method: send a V1 GET request and deserialize the JSON
@@ -244,8 +233,6 @@ impl TidalRequest {
     ///
     /// Retries are attempted when the server responds with HTTP 429 or a 5xx status,
     /// or when the request itself fails at the transport level.
-    /// On HTTP 401, invokes the `on_unauthorized` callback (if set) to refresh the
-    /// token, then retries the request once.
     /// The back-off delay is `BACKOFF_FACTOR * 2^attempt` seconds.
     async fn send_with_retry(
         &self,
@@ -253,7 +240,6 @@ impl TidalRequest {
         query: &HashMap<String, String>,
     ) -> Result<Response> {
         let mut attempt: u32 = 0;
-        let mut refreshed_on_401 = false;
 
         loop {
             let auth = self.auth.read().await;
@@ -276,25 +262,6 @@ impl TidalRequest {
             match request.send().await {
                 Ok(resp) => {
                     let status = resp.status();
-
-                    // Handle 401 Unauthorized — try refresh once.
-                    if status == StatusCode::UNAUTHORIZED && !refreshed_on_401
-                        && let Some(ref callback) = self.on_unauthorized
-                    {
-                        info!(url = %url, "Received 401, attempting token refresh");
-                        match callback().await {
-                            Ok(()) => {
-                                refreshed_on_401 = true;
-                                continue;
-                            }
-                            Err(e) => {
-                                warn!(url = %url, "Token refresh failed: {e}");
-                                return Err(anyhow!(
-                                    "Request to {url} returned 401 and token refresh failed: {e}"
-                                ));
-                            }
-                        }
-                    }
 
                     if status == StatusCode::TOO_MANY_REQUESTS
                         || status.as_u16() >= 500
