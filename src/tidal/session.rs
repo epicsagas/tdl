@@ -168,12 +168,12 @@ impl TidalSession {
 
         if self.token.is_restorable() {
             info!("Attempting session restoration via token refresh...");
-            if self.refresh_token().await.is_ok() {
-                if let Ok(session) = self.validate_session().await {
-                    self.set_session_info(&session).await;
-                    info!("Session restored after token refresh.");
-                    return Ok(());
-                }
+            if self.refresh_token().await.is_ok()
+                && let Ok(session) = self.validate_session().await
+            {
+                self.set_session_info(&session).await;
+                info!("Session restored after token refresh.");
+                return Ok(());
             }
         }
         bail!("Session expired or invalid. Please log in again.")

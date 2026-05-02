@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use crate::config::settings::Settings;
 use crate::config::token::Token;
 use crate::download::downloader::Downloader;
-use crate::tidal::session::{self as tidal_session, TidalSession};
+use crate::tidal::session::TidalSession;
 
 // ---------------------------------------------------------------------------
 // Screen enum

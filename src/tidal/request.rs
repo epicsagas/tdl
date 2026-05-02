@@ -2,7 +2,6 @@ use anyhow::{anyhow, Result};
 use reqwest::{Client, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::RwLock;
 use tokio::time::sleep;
