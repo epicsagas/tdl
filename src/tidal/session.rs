@@ -150,6 +150,32 @@ impl TidalSession {
         self.device_auth_login(url_handler).await
     }
 
+    /// Restore a session from the saved token without triggering device auth.
+    ///
+    /// Validates the saved access token, or refreshes it if expired.
+    /// Returns an error if the token cannot be restored (caller should prompt
+    /// the user to re-login).
+    pub async fn restore_session(&mut self) -> Result<()> {
+        if self.token.is_valid() {
+            self.apply_auth_to_request().await;
+            if let Ok(session) = self.validate_session().await {
+                self.set_session_info(&session).await;
+                info!("Session restored from saved token.");
+                return Ok(());
+            }
+        }
+        if self.token.refresh_token.is_some() {
+            info!("Access token expired, refreshing...");
+            if self.refresh_token().await.is_ok() {
+                let session = self.validate_session().await?;
+                self.set_session_info(&session).await;
+                info!("Session restored after token refresh.");
+                return Ok(());
+            }
+        }
+        bail!("Session expired or invalid. Please log in again.")
+    }
+
     /// Push current token credentials into the TidalRequest helper.
     async fn apply_auth_to_request(&self) {
         if let (Some(ttype), Some(access)) =

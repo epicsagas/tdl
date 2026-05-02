@@ -39,7 +39,7 @@ async fn ensure_session(
     }
     let settings = Settings::load().map_err(|e| e.to_string())?;
     let mut session = TidalSession::new(settings).map_err(|e| e.to_string())?;
-    session.login().await.map_err(|e| e.to_string())?;
+    session.restore_session().await.map_err(|e| e.to_string())?;
     let session = Arc::new(Mutex::new(session));
     tidal_session::install_auto_refresh(&session);
     {
@@ -629,6 +629,19 @@ pub fn run_gui() {
                 let _ = win.set_focus();
             }
         }))
+        .setup(|app| {
+            if let Ok(settings) = Settings::load() {
+                let base = settings.download_base_path.replace('~', &dirs::home_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy());
+                if let Err(e) = app.asset_protocol_scope().allow_directory(&base, true) {
+                    error!(path = %base, "Failed to add download dir to asset scope: {e}");
+                } else {
+                    info!(path = %base, "Added download dir to asset protocol scope");
+                }
+            }
+            Ok(())
+        })
         .manage(AppState {
             session: Arc::new(Mutex::new(None)),
             pkce: Arc::new(Mutex::new(None)),
