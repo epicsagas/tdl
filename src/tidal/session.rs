@@ -203,6 +203,9 @@ impl TidalSession {
         if let Some(user_id) = session.user_id {
             self.token.user_id = Some(user_id);
         }
+        if let Err(e) = self.token.save() {
+            tracing::warn!("Failed to persist session info: {e}");
+        }
     }
 
     // -----------------------------------------------------------------------
