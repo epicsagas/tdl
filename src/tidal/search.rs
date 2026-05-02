@@ -313,10 +313,16 @@ async fn paginate_wrapped_items<T: serde::de::DeserializeOwned>(
 
         let count = page.items.len();
         for wrapped in page.items {
-            if let Some(value) = wrapped.item
-                && let Ok(item) = serde_json::from_value::<T>(value) {
-                    all_items.push(item);
+            if let Some(value) = wrapped.item {
+                match serde_json::from_value::<T>(value) {
+                    Ok(item) => all_items.push(item),
+                    Err(e) => tracing::warn!(
+                        item_type = ?wrapped.item_type,
+                        error = %e,
+                        "Skipping item that failed to deserialize"
+                    ),
                 }
+            }
         }
 
         let total = page.total_number_of_items.unwrap_or(0);
