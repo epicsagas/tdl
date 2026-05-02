@@ -1439,7 +1439,7 @@ function setTrackInfo(t) {
 
 // ---- Queue ----
 function addToQueue(url, name, initialStatus = 'downloading') {
-    const id = Date.now().toString();
+    const id = `q-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     queue.set(id, { url, name, status: initialStatus, progress: '', tracks: null, activeTrack: -1 });
     renderQueue();
     return id;
@@ -3017,7 +3017,7 @@ if (listen) {
         // flush any tracks still showing 'waiting' or 'downloading' to completed
         if (item.tracks) {
             item.tracks.forEach(t => {
-                if (t.status === 'waiting' || t.status === 'downloading') t.status = 'ok';
+                if (t.status === 'waiting' || t.status === 'downloading') t.status = 'error';
             });
         }
         item.status = 'completed';
