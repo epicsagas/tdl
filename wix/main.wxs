@@ -69,6 +69,7 @@
 
         <Package Id='*'
             Keywords='Installer'
+            Description='Tidal music downloader with TUI and GUI'
             Manufacturer='epicsagas'
             InstallerVersion='450'
             Languages='1033'
