@@ -2,10 +2,18 @@
 name = "tdl"
 version = "0.2.1"
 edition = "2024"
+rust-version = "1.92"
+description = "Tidal music downloader with TUI and GUI"
 license = "Apache-2.0"
 repository = "https://github.com/epicsagas/tdl"
 homepage = "https://github.com/epicsagas/tools"
 authors = ["epicsagas"]
+
+[package.metadata.wix]
+upgrade-guid = "E7FB6C72-53DE-4E42-90AC-B45210BC3ED7"
+path-guid = "5A563B97-C3BF-4B42-A7F3-81FBFD84768C"
+license = false
+eula = false
 
 [dependencies]
 reqwest = { version = "0.13", features = ["json", "stream", "form", "query", "gzip", "deflate", "brotli"] }
@@ -51,3 +59,8 @@ optional = true
 [features]
 default = ["gui"]
 gui = ["tauri", "tauri-build", "opener", "dep:tauri-plugin-single-instance"]
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
