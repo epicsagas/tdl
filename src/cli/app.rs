@@ -320,12 +320,17 @@ pub async fn run() -> Result<()> {
         // ---------------------------------------------------------------
         // GUI
         // ---------------------------------------------------------------
+        #[cfg(feature = "gui")]
         Some(Commands::Gui { no_detach }) => {
             if no_detach {
                 crate::gui::run_gui();
             } else {
                 run_gui();
             }
+        }
+        #[cfg(not(feature = "gui"))]
+        Some(Commands::Gui { .. }) => {
+            bail!("GUI is not available in this build. Rebuild with --features gui.");
         }
 
         // ---------------------------------------------------------------
