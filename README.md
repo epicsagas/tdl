@@ -1,15 +1,15 @@
 <div align="center">
 
+[![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
+
 **[English](README.md)** | [한국어](docs/i18n/README.ko.md) | [日本語](docs/i18n/README.ja.md) | [简体中文](docs/i18n/README.zh-CN.md) | [Español](docs/i18n/README.es.md) | [Français](docs/i18n/README.fr.md) | [Deutsch](docs/i18n/README.de.md) | [Português](docs/i18n/README.pt.md) | [Русский](docs/i18n/README.ru.md) | [Italiano](docs/i18n/README.it.md)
 
 # tdl
 
 > Tidal music downloader with lossless quality — CLI, TUI, and GUI
-
-[![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
 
 </div>
 

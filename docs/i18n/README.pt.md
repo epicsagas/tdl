@@ -1,13 +1,15 @@
 <div align="center">
 
-# tdl
-
-> Downloader de música Tidal com qualidade sem perdas — CLI, TUI e GUI
-
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](../../LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
+
+**[English](../../README.md)** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [Русский](README.ru.md) | [Italiano](README.it.md)
+
+# tdl
+
+> Downloader de música Tidal com qualidade sem perdas — CLI, TUI e GUI
 
 </div>
 
@@ -22,8 +24,8 @@ brew install epicsagas/tap/tdl
 # Binário pré-compilado (Linux/macOS/Windows)
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.sh | sh
 
-# A partir do código-fonte
-cargo install tdl
+# Cargo
+cargo install --git https://github.com/epicsagas/tdl
 ```
 
 ```bash
@@ -59,12 +61,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas
 
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.ps1 | iex
-```
-
-### Cargo
-
-```bash
-cargo install tdl
 ```
 
 ### A Partir do Fonte

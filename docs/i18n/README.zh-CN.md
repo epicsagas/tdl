@@ -1,13 +1,15 @@
 <div align="center">
 
-# tdl
-
-> Tidal 音乐下载器 — 无损音质，支持 CLI/TUI/GUI
-
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](../../LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
+
+**[English](../../README.md)** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [Русский](README.ru.md) | [Italiano](README.it.md)
+
+# tdl
+
+> Tidal 音乐下载器 — 无损音质，支持 CLI/TUI/GUI
 
 </div>
 
@@ -22,8 +24,8 @@ brew install epicsagas/tap/tdl
 # 预构建二进制文件 (Linux/macOS/Windows)
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.sh | sh
 
-# 从源码构建
-cargo install tdl
+# Cargo
+cargo install --git https://github.com/epicsagas/tdl
 ```
 
 ```bash
@@ -59,12 +61,6 @@ curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas
 
 # Windows (PowerShell)
 irm https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.ps1 | iex
-```
-
-### Cargo
-
-```bash
-cargo install tdl
 ```
 
 ### 从源码构建

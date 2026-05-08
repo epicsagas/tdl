@@ -1,13 +1,15 @@
 <div align="center">
 
-# tdl
-
-> Tidal 음악 다운로더 - 무손실 음질, CLI/TUI/GUI 지원
-
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
+
+**[English](../../README.md)** | [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md) | [Português](README.pt.md) | [Русский](README.ru.md) | [Italiano](README.it.md)
+
+# tdl
+
+> Tidal 음악 다운로더 - 무손실 음질, CLI/TUI/GUI 지원
 
 </div>
 
@@ -67,13 +69,19 @@ irm https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.ps1 | i
 cargo install tdl
 ```
 
-### 소스에서 빌드
+##### 소스에서 빌드
 
 ```bash
 git clone https://github.com/epicsagas/tdl.git
 cd tdl
 cargo build --release
 # 바이너리: target/release/tdl
+```
+
+### Cargo
+
+```bash
+cargo install --git https://github.com/epicsagas/tdl
 ```
 
 ## 사용법
