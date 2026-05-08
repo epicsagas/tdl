@@ -15,6 +15,9 @@
 
 </div>
 
+> **AVVISO: La distribuzione non autorizzata di musica protetta da diritto d'autore è illegale.**
+> Questo strumento è destinato esclusivamente all'uso personale. È vietato condividere, ridistribuire o pubblicare i contenuti scaricati. Rispettate gli artisti e le leggi sul diritto d'autore.
+
 ## Avvio Rapido
 
 ```bash

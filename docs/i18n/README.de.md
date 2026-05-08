@@ -17,6 +17,9 @@
 
 <img src="../assets/favorites.png" alt="favorites gui" width="100%" />
 
+> **WARNUNG: Die unerlaubte Verbreitung urheberrechtlich geschützter Musik ist illegal.**
+> Dieses Tool ist ausschließlich für den persönlichen Gebrauch bestimmt. Heruntergeladene Inhalte dürfen nicht geteilt, weiterverbreitet oder öffentlich zugänglich gemacht werden. Respektieren Sie Künstler und Urheberrecht.
+
 ## Schnellstart
 
 ```bash

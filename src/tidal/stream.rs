@@ -278,13 +278,12 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                 let local: &[u8] = &local_name_owned;
                 match local {
                     b"Period" => in_period = true,
-                    b"AdaptationSet" => {
-                        if in_period {
+                    b"AdaptationSet"
+                        if in_period => {
                             in_adaptation_set = true;
                         }
-                    }
-                    b"Representation" => {
-                        if in_adaptation_set {
+                    b"Representation"
+                        if in_adaptation_set => {
                             in_representation = true;
                             // Inherit AdaptationSet defaults.
                             rep_init_url = adapt_init_url.clone();
@@ -308,7 +307,6 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 }
                             }
                         }
-                    }
                     b"SegmentTemplate" => {
                         let (init, media, start) = read_segment_template_attrs(e);
                         if in_representation {
@@ -321,8 +319,8 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                             if let Some(n) = start { adapt_start_number = n; }
                         }
                     }
-                    b"SegmentTimeline" => {
-                        if in_representation || in_adaptation_set {
+                    b"SegmentTimeline"
+                        if (in_representation || in_adaptation_set) => {
                             in_segment_timeline = true;
                             segment_timeline_in_adapt = !in_representation;
                             // Clear Representation-level timeline when starting a new one inside it.
@@ -330,9 +328,8 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 rep_timeline.clear();
                             }
                         }
-                    }
-                    b"S" => {
-                        if in_segment_timeline {
+                    b"S"
+                        if in_segment_timeline => {
                             let (d, r) = read_s_attrs(e);
                             if segment_timeline_in_adapt {
                                 adapt_timeline.push((d, r));
@@ -340,13 +337,10 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 rep_timeline.push((d, r));
                             }
                         }
-                    }
-                    b"BaseURL" => {
-                        if in_representation { in_base_url = true; }
-                    }
-                    b"SegmentList" => {
-                        if in_representation { in_segment_list = true; }
-                    }
+                    b"BaseURL"
+                        if in_representation => { in_base_url = true; }
+                    b"SegmentList"
+                        if in_representation => { in_segment_list = true; }
                     _ => {}
                 }
             }
@@ -354,11 +348,11 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                 let local_name_owned = e.name().local_name().as_ref().to_vec();
                 let local: &[u8] = &local_name_owned;
                 match local {
-                    b"Representation" => {
+                    b"Representation"
                         // Self-closing <Representation .../> — inherits AdaptationSet template.
                         // urls.is_empty() guard: Tidal manifests contain a single audio stream;
                         // we take the first Representation and skip the rest.
-                        if in_adaptation_set && urls.is_empty() {
+                        if in_adaptation_set && urls.is_empty() => {
                             let mut r_id = String::new();
                             for attr in e.attributes().flatten() {
                                 match attr.key.local_name().as_ref() {
@@ -395,7 +389,6 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 }
                             }
                         }
-                    }
                     b"SegmentTemplate" => {
                         let (init, media, start) = read_segment_template_attrs(e);
                         if in_representation {
@@ -408,8 +401,8 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                             if let Some(n) = start { adapt_start_number = n; }
                         }
                     }
-                    b"S" => {
-                        if in_segment_timeline {
+                    b"S"
+                        if in_segment_timeline => {
                             let (d, r) = read_s_attrs(e);
                             if segment_timeline_in_adapt {
                                 adapt_timeline.push((d, r));
@@ -417,9 +410,8 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                 rep_timeline.push((d, r));
                             }
                         }
-                    }
-                    b"SegmentURL" => {
-                        if in_segment_list {
+                    b"SegmentURL"
+                        if in_segment_list => {
                             for attr in e.attributes().flatten() {
                                 if attr.key.local_name().as_ref() == b"media"
                                     && let Ok(v) = attr.unescape_value() {
@@ -427,7 +419,6 @@ fn parse_mpd(data: &[u8]) -> Result<StreamManifest> {
                                     }
                             }
                         }
-                    }
                     _ => {}
                 }
             }

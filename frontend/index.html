@@ -100,6 +100,11 @@ body { font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-seri
 .nav-btn:hover { background:rgba(0,210,255,.06); color:var(--text); }
 .nav-btn.active { background:rgba(0,210,255,.1); color:var(--accent); border-left-color:var(--accent); }
 .nav-btn .badge { float:right; font-size:11px; opacity:.5; }
+.sidebar-warning {
+    margin-top:auto; padding:10px 14px; border-top:1px solid var(--border);
+    font-size:10px; line-height:1.4; color:var(--warn);
+    background:rgba(255,165,2,.06); text-align:center;
+}
 
 /* Main */
 #main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
@@ -594,6 +599,9 @@ tr.playing td { color:var(--accent) !important; }
         <div class="nav-group-title" data-i18n="nav.system">Settings</div>
         <button class="nav-btn" data-page="settings" data-i18n="nav.settings">Settings</button>
         <button class="nav-btn" data-page="account" data-i18n="nav.account">Account</button>
+    </div>
+    <div class="sidebar-warning" data-i18n="sidebar.warning">
+        Unauthorized distribution of copyrighted music is illegal. For personal use only.
     </div>
 </aside>
 
@@ -2289,6 +2297,7 @@ const LOCALES = {
         'player.downloading':'Downloading...','player.dlFailed':'Download failed','player.playFailed':'Playback unavailable',
         'queue.downloading':'Downloading...','queue.queued':'Queued','queue.completed':'{done}/{total} completed','queue.errors':'{n} errors',
         'sel.count':'{n} selected',
+        'sidebar.warning':'Unauthorized distribution of copyrighted music is illegal. For personal use only.',
     },
     ko: {
         _name: '한국어', _flag: '🇰🇷',
@@ -2350,6 +2359,7 @@ const LOCALES = {
         'player.downloading':'다운로드 중...','player.dlFailed':'다운로드 실패','player.playFailed':'재생 불가',
         'queue.downloading':'다운로드 중...','queue.queued':'대기 중','queue.completed':'{done}/{total} 완료','queue.errors':'{n}개 오류',
         'sel.count':'{n}개 선택됨',
+        'sidebar.warning':'저작권 음원의 무단 배포는 불법입니다. 개인 용도로만 사용하세요.',
     },
     de: {
         _name: 'Deutsch', _flag: '🇩🇪',
@@ -2389,6 +2399,7 @@ const LOCALES = {
         'player.downloading':'Lädt herunter...','player.dlFailed':'Download fehlgeschlagen','player.playFailed':'Wiedergabe nicht möglich',
         'queue.downloading':'Herunterladen...','queue.completed':'{done}/{total} abgeschlossen','queue.errors':'{n} Fehler',
         'sel.count':'{n} ausgewählt',
+        'sidebar.warning':'Urheberrechtlich geschützte Musik darf nicht unerlaubt verbreitet werden. Nur für den persönlichen Gebrauch.',
     },
     fr: {
         _name: 'Français', _flag: '🇫🇷',
@@ -2428,6 +2439,7 @@ const LOCALES = {
         'player.downloading':'Téléchargement...','player.dlFailed':'Échec du téléchargement','player.playFailed':'Lecture impossible',
         'queue.downloading':'Téléchargement...','queue.completed':'{done}/{total} terminé(s)','queue.errors':'{n} erreur(s)',
         'sel.count':'{n} sélectionné(s)',
+        'sidebar.warning':'La distribution non autorisée de musique protégée par le droit d\'auteur est illégale. Usage personnel uniquement.',
     },
     ja: {
         _name: '日本語', _flag: '🇯🇵',
@@ -2467,6 +2479,7 @@ const LOCALES = {
         'player.downloading':'ダウンロード中...','player.dlFailed':'ダウンロード失敗','player.playFailed':'再生不可',
         'queue.downloading':'ダウンロード中...','queue.completed':'{done}/{total} 完了','queue.errors':'{n}件のエラー',
         'sel.count':'{n}件選択中',
+        'sidebar.warning':'著作権のある音楽の無断配布は違法です。個人使用のみにご利用ください。',
     },
     pt: {
         _name: 'Português', _flag: '🇧🇷',
@@ -2506,6 +2519,7 @@ const LOCALES = {
         'player.downloading':'Baixando...','player.dlFailed':'Falha no download','player.playFailed':'Reprodução indisponível',
         'queue.downloading':'Baixando...','queue.completed':'{done}/{total} concluído(s)','queue.errors':'{n} erro(s)',
         'sel.count':'{n} selecionado(s)',
+        'sidebar.warning':'A distribuição não autorizada de músicas protegidas por direitos autorais é ilegal. Apenas para uso pessoal.',
     },
     es: {
         _name: 'Español', _flag: '🇲🇽',
@@ -2545,6 +2559,7 @@ const LOCALES = {
         'player.downloading':'Descargando...','player.dlFailed':'Error de descarga','player.playFailed':'Reproducción no disponible',
         'queue.downloading':'Descargando...','queue.completed':'{done}/{total} completado(s)','queue.errors':'{n} error(es)',
         'sel.count':'{n} seleccionado(s)',
+        'sidebar.warning':'La distribución no autorizada de música con derechos de autor es ilegal. Solo para uso personal.',
     },
     sv: {
         _name: 'Svenska', _flag: '🇸🇪',
@@ -2584,6 +2599,7 @@ const LOCALES = {
         'player.downloading':'Laddar ner...','player.dlFailed':'Nedladdning misslyckades','player.playFailed':'Uppspelning ej möjlig',
         'queue.downloading':'Laddar ner...','queue.completed':'{done}/{total} klara','queue.errors':'{n} fel',
         'sel.count':'{n} valda',
+        'sidebar.warning':'Obehörig spridning av upphovsrättsskyddad musik är olaglig. Endast för personligt bruk.',
     },
     no: {
         _name: 'Norsk', _flag: '🇳🇴',
@@ -2623,6 +2639,7 @@ const LOCALES = {
         'player.downloading':'Laster ned...','player.dlFailed':'Nedlasting mislyktes','player.playFailed':'Avspilling utilgjengelig',
         'queue.downloading':'Laster ned...','queue.completed':'{done}/{total} fullført','queue.errors':'{n} feil',
         'sel.count':'{n} valgt',
+        'sidebar.warning':'Uautorisert distribusjon av opphavsrettsbeskyttet musikk er ulovlig. Kun for personlig bruk.',
     },
     zh: {
         _name: '中文', _flag: '🇨🇳',
@@ -2662,6 +2679,7 @@ const LOCALES = {
         'player.downloading':'下载中...','player.dlFailed':'下载失败','player.playFailed':'无法播放',
         'queue.downloading':'下载中...','queue.completed':'已完成 {done}/{total}','queue.errors':'{n} 个错误',
         'sel.count':'已选 {n} 项',
+        'sidebar.warning':'未经授权分发受版权保护的音乐是违法行为。仅供个人使用。',
     },
 };
 
