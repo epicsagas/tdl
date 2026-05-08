@@ -25,7 +25,7 @@ brew install epicsagas/tap/tdl
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.sh | sh
 
 # From source
-cargo install tdl
+cargo install --git https://github.com/epicsagas/tdl
 ```
 
 ```bash
