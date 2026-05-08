@@ -17,6 +17,9 @@
 
 <img src="../assets/favorites.png" alt="favorites gui" width="100%" />
 
+> **AVISO: A distribuição não autorizada de música protegida por direitos autorais é ilegal.**
+> Esta ferramenta é apenas para uso pessoal. Não compartilhe, redistribua ou publique o conteúdo baixado. Respeite os artistas e as leis de direitos autorais.
+
 ## Início Rápido
 
 ```bash

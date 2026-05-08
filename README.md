@@ -19,6 +19,9 @@
 
 <img src="docs/assets/favorites.png" alt="favorites gui" width="100%" />
 
+> **WARNING: Unauthorized distribution of copyrighted music is illegal.**
+> This tool is for personal use only. Downloaded content must not be shared, redistributed, or made publicly available. Respect artists and copyright law.
+
 ## Quick Start
 
 ```bash

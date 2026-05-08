@@ -252,6 +252,11 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled(" ○ ", Style::default().fg(Color::DarkGray))
     };
 
+    let warning = Span::styled(
+        " Unauthorized distribution of copyrighted music is illegal — for personal use only ",
+        Style::default().fg(Color::Yellow),
+    );
+
     let title = Paragraph::new(Line::from(
         [
             Span::styled(" tdl ", Style::default().bold().cyan()),
@@ -260,6 +265,7 @@ fn draw_header(app: &App, frame: &mut Frame, area: Rect) {
         ]
         .into_iter()
         .chain(spans)
+        .chain(std::iter::once(warning))
         .collect::<Vec<Span>>(),
     ))
     .block(Block::default().borders(Borders::BOTTOM));
@@ -543,18 +549,15 @@ fn handle_pkce_input(app: &mut App, code: KeyCode) -> bool {
             // but store the input in a side-channel via a temporary log entry.
             // Cleaner: use a dedicated field.
         }
-        KeyCode::Backspace => {
-            if *cursor > 0 {
+        KeyCode::Backspace
+            if *cursor > 0 => {
                 *cursor -= 1;
                 input.remove(*cursor);
             }
-        }
-        KeyCode::Left => {
-            if *cursor > 0 { *cursor -= 1; }
-        }
-        KeyCode::Right => {
-            if *cursor < input.len() { *cursor += 1; }
-        }
+        KeyCode::Left
+            if *cursor > 0 => { *cursor -= 1; }
+        KeyCode::Right
+            if *cursor < input.len() => { *cursor += 1; }
         KeyCode::Char(c) => {
             input.insert(*cursor, c);
             *cursor += 1;
@@ -591,18 +594,15 @@ fn handle_download(app: &mut App, code: KeyCode) -> bool {
     match code {
         KeyCode::Esc => app.screen = Screen::Main,
         KeyCode::Enter => {} // handled in main loop
-        KeyCode::Backspace => {
-            if app.url_cursor > 0 {
+        KeyCode::Backspace
+            if app.url_cursor > 0 => {
                 app.url_cursor -= 1;
                 app.url_input.remove(app.url_cursor);
             }
-        }
-        KeyCode::Left => {
-            if app.url_cursor > 0 { app.url_cursor -= 1; }
-        }
-        KeyCode::Right => {
-            if app.url_cursor < app.url_input.len() { app.url_cursor += 1; }
-        }
+        KeyCode::Left
+            if app.url_cursor > 0 => { app.url_cursor -= 1; }
+        KeyCode::Right
+            if app.url_cursor < app.url_input.len() => { app.url_cursor += 1; }
         KeyCode::Char(c) => {
             app.url_input.insert(app.url_cursor, c);
             app.url_cursor += 1;
@@ -641,12 +641,10 @@ fn handle_settings(app: &mut App, code: KeyCode) -> bool {
             .unwrap_or(0);
 
         match code {
-            KeyCode::Up | KeyCode::Char('k') => {
-                if app.settings_dropdown_idx > 0 { app.settings_dropdown_idx -= 1; }
-            }
-            KeyCode::Down | KeyCode::Char('j') => {
-                if app.settings_dropdown_idx + 1 < opt_count { app.settings_dropdown_idx += 1; }
-            }
+            KeyCode::Up | KeyCode::Char('k')
+                if app.settings_dropdown_idx > 0 => { app.settings_dropdown_idx -= 1; }
+            KeyCode::Down | KeyCode::Char('j')
+                if app.settings_dropdown_idx + 1 < opt_count => { app.settings_dropdown_idx += 1; }
             KeyCode::Enter => {
                 if let Some(field) = app.settings_fields.get(sel_idx)
                     && let Some(options) = &field.options
@@ -731,9 +729,8 @@ fn handle_account(app: &mut App, code: KeyCode) -> bool {
         KeyCode::Enter => match app.account_state.selected().unwrap_or(0) {
             0 => {} // OAuth: handled in main loop
             1 => {} // PKCE start: handled in main loop
-            2 => {
-                if app.logged_in { app.logout_confirm = true; }
-            }
+            2
+                if app.logged_in => { app.logout_confirm = true; }
             _ => {}
         },
         KeyCode::Esc => app.screen = Screen::Main,
