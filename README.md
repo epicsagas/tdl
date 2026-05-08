@@ -24,13 +24,6 @@ brew install epicsagas/tap/tdl
 # Pre-built binary (Linux/macOS/Windows)
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/epicsagas/tdl/main/scripts/install.sh | sh
 
-# Fast path (downloads prebuilt binary when available)
-cargo binstall tdl
-cargo install cargo-binstall # Install cargo-binstall if missing
-
-# Or just
-cargo install tdl
-
 # From source
 cargo install tdl
 ```
