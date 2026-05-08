@@ -4,7 +4,7 @@
 
 > Téléchargeur de musique Tidal avec qualité sans perte — CLI, TUI et GUI
 
-[![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
+[![GitHub Release](https://img.shields.io/github/v/release/epicsagas/tdl)](https://github.com/epicsagas/tdl/releases)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](../../LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
