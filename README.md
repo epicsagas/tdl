@@ -1,17 +1,19 @@
 <div align="center">
+# tdl
+
+> Tidal music downloader with lossless quality — CLI, TUI, and GUI
+
 
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
 
 <p>
-<strong>[English](README.md)</strong> | <a href="docs/i18n/README.ko.md">한국어</a> | <a href="docs/i18n/README.ja.md">日本語</a> | <a href="docs/i18n/README.zh-CN.md">简体中文</a> | <a href="docs/i18n/README.es.md">Español</a> | <a href="docs/i18n/README.fr.md">Français</a> | <a href="docs/i18n/README.de.md">Deutsch</a> | <a href="docs/i18n/README.pt.md">Português</a> | <a href="docs/i18n/README.ru.md">Русский</a> | <a href="docs/i18n/README.it.md">Italiano</a>
+<strong>English</strong> | <a href="docs/i18n/README.ko.md">한국어</a> | <a href="docs/i18n/README.ja.md">日本語</a> | <a href="docs/i18n/README.zh-CN.md">简体中文</a> | <a href="docs/i18n/README.es.md">Español</a> | <a href="docs/i18n/README.fr.md">Français</a> | <a href="docs/i18n/README.de.md">Deutsch</a> | <a href="docs/i18n/README.pt.md">Português</a> | <a href="docs/i18n/README.ru.md">Русский</a> | <a href="docs/i18n/README.it.md">Italiano</a>
 </p>
 
-# tdl
-
-> Tidal music downloader with lossless quality — CLI, TUI, and GUI
 
 </div>
 
