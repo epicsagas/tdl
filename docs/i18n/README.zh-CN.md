@@ -1,4 +1,7 @@
 <div align="center">
+# tdl
+
+> Tidal 音乐下载器 — 无损音质，支持 CLI/TUI/GUI
 
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
@@ -8,10 +11,6 @@
 <p>
 <a href="../../README.md"><strong>English</strong></a> | <a href="README.ko.md">한국어</a> | <a href="README.ja.md">日本語</a> | <strong>简体中文</strong> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <a href="README.de.md">Deutsch</a> | <a href="README.pt.md">Português</a> | <a href="README.ru.md">Русский</a> | <a href="README.it.md">Italiano</a>
 </p>
-
-# tdl
-
-> Tidal 音乐下载器 — 无损音质，支持 CLI/TUI/GUI
 
 </div>
 

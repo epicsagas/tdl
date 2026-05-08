@@ -1,5 +1,9 @@
 <div align="center">
 
+# tdl
+
+> Tidal-Musikdownloader mit verlustfreier Qualität — CLI, TUI und GUI
+
 [![CI](https://github.com/epicsagas/tdl/actions/workflows/ci.yml/badge.svg)](https://github.com/epicsagas/tdl/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](../../LICENSE)
@@ -8,10 +12,6 @@
 <p>
 <a href="../../README.md"><strong>English</strong></a> | <a href="README.ko.md">한국어</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.es.md">Español</a> | <a href="README.fr.md">Français</a> | <strong>Deutsch</strong> | <a href="README.pt.md">Português</a> | <a href="README.ru.md">Русский</a> | <a href="README.it.md">Italiano</a>
 </p>
-
-# tdl
-
-> Tidal-Musikdownloader mit verlustfreier Qualität — CLI, TUI und GUI
 
 </div>
 
