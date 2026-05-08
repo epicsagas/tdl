@@ -1,6 +1,6 @@
 [package]
 name = "tdl"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.92"
 description = "Tidal music downloader with TUI and GUI"
