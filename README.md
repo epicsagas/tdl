@@ -5,7 +5,9 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
 
-**[English](README.md)** | [한국어](docs/i18n/README.ko.md) | [日本語](docs/i18n/README.ja.md) | [简体中文](docs/i18n/README.zh-CN.md) | [Español](docs/i18n/README.es.md) | [Français](docs/i18n/README.fr.md) | [Deutsch](docs/i18n/README.de.md) | [Português](docs/i18n/README.pt.md) | [Русский](docs/i18n/README.ru.md) | [Italiano](docs/i18n/README.it.md)
+<p>
+<strong>[English](README.md)</strong> | <a href="docs/i18n/README.ko.md">한국어</a> | <a href="docs/i18n/README.ja.md">日本語</a> | <a href="docs/i18n/README.zh-CN.md">简体中文</a> | <a href="docs/i18n/README.es.md">Español</a> | <a href="docs/i18n/README.fr.md">Français</a> | <a href="docs/i18n/README.de.md">Deutsch</a> | <a href="docs/i18n/README.pt.md">Português</a> | <a href="docs/i18n/README.ru.md">Русский</a> | <a href="docs/i18n/README.it.md">Italiano</a>
+</p>
 
 # tdl
 
