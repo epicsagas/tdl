@@ -4,11 +4,19 @@
 > Tidal music downloader with lossless quality — CLI, TUI, and GUI
 
 
-[![GitHub Release](https://img.shields.io/github/v/release/epicsagas/tdl)](https://github.com/epicsagas/tdl/releases)
-[![Version](https://img.shields.io/crates/v/tdl)](https://crates.io/crates/tdl)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Homebrew](https://img.shields.io/badge/install-homebrew-orange)](#installation)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=flat&logo=buy-me-a-coffee&logoColor=black)](https://buymeacoffee.com/epicsaga)
+<p align="center">
+  <a href="https://github.com/epicsagas/tdl/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/epicsagas/tdl?style=for-the-badge&labelColor=0d1117&color=ffd700&logo=github&logoColor=white" /></a>
+  <a href="https://github.com/epicsagas/tdl/network/members"><img alt="Forks" src="https://img.shields.io/github/forks/epicsagas/tdl?style=for-the-badge&labelColor=0d1117&color=2ecc71&logo=github&logoColor=white" /></a>
+  <a href="https://github.com/epicsagas/tdl/issues"><img alt="Issues" src="https://img.shields.io/github/issues/epicsagas/tdl?style=for-the-badge&labelColor=0d1117&color=ff6b6b&logo=github&logoColor=white" /></a>
+  <a href="https://github.com/epicsagas/tdl/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/epicsagas/tdl?style=for-the-badge&labelColor=0d1117&color=58a6ff&logo=git&logoColor=white" /></a>
+</p>
+<p align="center">
+  <a href="https://crates.io/crates/tdl"><img alt="Crates.io" src="https://img.shields.io/crates/v/tdl?style=for-the-badge&labelColor=0d1117&color=fc8d62&logo=rust&logoColor=white" /></a>
+  <a href="https://crates.io/crates/tdl"><img alt="Downloads" src="https://img.shields.io/crates/d/tdl?style=for-the-badge&labelColor=0d1117&color=3498db&logo=rust&logoColor=white" /></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-3fb950?style=for-the-badge&labelColor=0d1117" /></a>
+  <img alt="Rust" src="https://img.shields.io/badge/rust-d73a49?style=for-the-badge&labelColor=0d1117&logo=rust&logoColor=white" />
+  <a href="https://buymeacoffee.com/epicsaga"><img alt="Buy Me a Coffee" src="https://img.shields.io/badge/buy_me_a_coffee-FFDD00?style=for-the-badge&labelColor=0d1117&logo=buymeacoffee&logoColor=black" /></a>
+</p>
 
 <p>
 <strong>English</strong> | <a href="docs/i18n/README.ko.md">한국어</a> | <a href="docs/i18n/README.ja.md">日本語</a> | <a href="docs/i18n/README.zh-CN.md">简体中文</a> | <a href="docs/i18n/README.es.md">Español</a> | <a href="docs/i18n/README.fr.md">Français</a> | <a href="docs/i18n/README.de.md">Deutsch</a> | <a href="docs/i18n/README.pt.md">Português</a> | <a href="docs/i18n/README.ru.md">Русский</a> | <a href="docs/i18n/README.it.md">Italiano</a>
