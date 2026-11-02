@@ -72,9 +72,9 @@ pub async fn download_track(session: Arc<Mutex<TidalSession>>, settings: &Settin
 - 78 library tests covering: path formatting, sanitization, segment ID parsing, M3U8 parsing, BTS/MPD manifest parsing, encryption/decryption roundtrips, token validation, URL parsing, quality mapping, settings serialization
 
 ## Git Workflow
-- Branch strategy: Not observed — single main branch
-- Commit format: Not observed — no conventional commit enforcement
-- PR requirements: Not observed — no CI checks on PRs; CI only runs on tag push for releases
+- Branch strategy: single `main`
+- Commit format: Conventional Commits per CONTRIBUTING.md (`type(scope): description`, e.g. `feat(dl): add progress bar`)
+- PR requirements: CI does not run on PRs, so run the local gates before opening one: `cargo clippy --features gui -- -D warnings`, `cargo fmt --check`, `cargo test --lib`
 - Release: tag push (`v*` or `tdl-v*`) triggers `.github/workflows/release.yml` → multi-platform build + publish to public repo + Homebrew tap update
 
 ## Boundaries

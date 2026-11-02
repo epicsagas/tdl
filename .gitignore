@@ -208,3 +208,6 @@ $RECYCLE.BIN/
 .cargo/
 dist/
 gen/
+
+# epic-harness personal overrides
+.epic/*.local.md
